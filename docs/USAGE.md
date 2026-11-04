@@ -191,6 +191,21 @@ curl -s -H "x-console-token: $TOKEN" http://127.0.0.1:3100/api/status | python3 
 
 ## 4. QQ 功能使用
 
+### 4.0 她能不能「看视频」
+
+能，但分两层：
+
+- **B站 子系统**（插件侧）：`debrief`/`watch-video` 可以读简介/字幕/弹幕/热评并抽帧拼九宫格看画面。
+- **QQ 对话侧**（她本人）：补丁 0007 给她加了一个**只读**工具 `qq_look_bilibili_video`：
+  你在 QQ 里发 B站 链接，她可以调用它读字幕 + 看九宫格画面，再跟你聊。
+
+前置：
+1. 装 ffmpeg（放到 `~/.dsh/surfcore/bili/bin/ffmpeg` 或 PATH）
+2. B站 扫码登录（设置 → SurfCore → B站），生成 `~/.dsh/surfcore/bili/credentials.json`
+3. 重启 DSH（MCP 工具在启动时加载）
+
+没有登录时，工具会返回「还没有登录 B站…」而不是报错。
+
 ### 4.1 文字聊天
 
 - 私聊：直接发消息

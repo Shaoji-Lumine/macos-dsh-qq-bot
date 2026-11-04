@@ -1,0 +1,91 @@
+diff --git a/src/mcp-snowluma-safe.js b/src/mcp-snowluma-safe.js
+index 45a1363..03abfba 100644
+--- a/src/mcp-snowluma-safe.js
++++ b/src/mcp-snowluma-safe.js
+@@ -7,6 +7,8 @@
+ //   allow.groups / allow.private，否则拒绝 —— agent 只能往被允许的地方发消息。
+ // - 所有调用走 OneBot HTTP API（httpUrl + accessToken）。
+ import fs from 'node:fs';
++import os from 'node:os';
++import { execFile } from 'node:child_process';
+ import http from 'node:http';
+ import path from 'node:path';
+ import { fileURLToPath } from 'node:url';
+@@ -381,6 +383,77 @@ const disabledTools = [];
+   };
+ }
+ 
++// ── B站 看视频（只读，2026-11-04）──────────────────────────────────────
++// 为什么在这里：QQ 侧 agent 没有本地工具（安全设计），但又需要「你发个视频链接她能看」。
++// 这里用已有的 `plugins/surfcore/tools/bili.mjs debrief` 一条龙：简介/官方字幕/弹幕/热评 + 抽帧九宫格，
++// 只读、不发评论、不点赞、不登录；B站 未登录时返回可读提示（让主人去设置页扫码）。
++const BILI_MJS = path.join(ROOT, 'plugins/surfcore/tools/bili.mjs');
++const DSH_HOME_DIR = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
++const BILI_CRED_FILE = path.join(DSH_HOME_DIR, 'surfcore', 'bili', 'credentials.json');
++
++function extractBvid(input) {
++  const text = String(input ?? '').trim();
++  const m = text.match(/(BV[0-9A-Za-z]{10})/);
++  return m ? m[1] : '';
++}
++
++function runBiliLook(args, timeoutMs = 240_000) {
++  return new Promise((resolve) => {
++    execFile(process.execPath, [BILI_MJS, ...args], {
++      timeout: timeoutMs,
++      maxBuffer: 48 * 1024 * 1024,
++      env: { ...process.env },
++      encoding: 'utf8',
++    }, (error, stdout, stderr) => {
++      resolve({ error, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') });
++    });
++  });
++}
++
++server.tool(
++  'qq_look_bilibili_video',
++  '看一条 B站视频（只读）：读简介/官方字幕/弹幕/热评，并抽帧拼成九宫格图片一起返回。'
++    + '需要主人先在「设置 → SurfCore → B站」扫码登录；没登录会返回提示。'
++    + '适合：主人发来 B站 链接让你看完聊内容。不要用它发评论/点赞（本工具只读）。',
++  {
++    target: z.string().describe('B站视频链接或 BV 号（例如 https://www.bilibili.com/video/BV1xxxxxxxxx 或 BV1xxxxxxxxx）'),
++    frames: z.boolean().optional().describe('是否抽帧看画面（默认 true；false 只读文字更快）'),
++    grid: z.enum(['3x3', '4x4']).optional().describe('九宫格布局，默认 3x3'),
++  },
++  async ({ target, frames, grid }) => {
++    const bvid = extractBvid(target);
++    if (!bvid) {
++      return { content: [{ type: 'text', text: '这看起来不是 B站 视频链接或 BV 号；请给我形如 BV1xxxxxxxxx 的编号或完整视频链接。' }], isError: true };
++    }
++    if (!fs.existsSync(BILI_CRED_FILE)) {
++      return {
++        content: [{ type: 'text', text: '还没有登录 B站，看不了：请主人打开 DSH「设置 → SurfCore → B站」扫码登录后，再让我看这条视频。' }],
++        isError: true,
++      };
++    }
++    const args = ['debrief', bvid, '--grid', grid || '3x3'];
++    if (frames === false) args.push('--no-frames');
++    const { error, stdout, stderr } = await runBiliLook(args);
++    const clean = (t) => String(t || '').replace(/\x1b\[[0-9;]*m/g, '').trim();
++    const outText = clean(stdout);
++    if (!outText && error) {
++      return { content: [{ type: 'text', text: `看视频失败：${clean(stderr) || error.message || '未知错误'}` }], isError: true };
++    }
++    const sheetLine = outText.split('\n').find((l) => l.startsWith('SHEET:'));
++    const sheetPath = sheetLine ? sheetLine.slice('SHEET:'.length).trim() : '';
++    const content = [{ type: 'text', text: outText.slice(0, 12000) + (outText.length > 12000 ? '\n…（已截断）' : '') }];
++    if (sheetPath && fs.existsSync(sheetPath)) {
++      try {
++        const buf = fs.readFileSync(sheetPath);
++        if (buf.length > 0 && buf.length < 15 * 1024 * 1024) {
++          content.push({ type: 'image', data: buf.toString('base64'), mimeType: 'image/jpeg' });
++        }
++      } catch {}
++    }
++    return { content };
++  }
++);
++
+ server.tool(
+   'qq_status',
+   '查询 QQ 机器人登录状态与账号信息（只读）。',
