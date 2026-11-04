@@ -37,7 +37,7 @@ cd macos-dsh-qq-bot
 bash scripts/install.sh --dir "$HOME/Desktop/qq-bot"
 ```
 
-安装脚本会：下载 SurfCore → 应用 `patches/` → 装依赖 → 生成 `config.json`（交互式填 ownerQQ / consoleToken）→ 生成启动脚本。
+安装脚本会：下载 SurfCore → 应用 `patches/` → 装依赖 → 生成 `config.json`（交互式填 ownerQQ / consoleToken）→ 生成启动脚本 → **自动把插件注册进 DSH profile**（检测到 `~/.dsh/profiles/desktop` 时）。
 
 然后按 [`docs/QUICKSTART.md`](docs/QUICKSTART.md)：
 
@@ -52,6 +52,7 @@ patches/               对上游 SurfCore 的 macOS/增强补丁
 scripts/
   install.sh           主安装（clone 上游 + 打补丁 + 配置）
   setup-napcat.sh      NapCat 安装指引/下载
+  setup-dsh-plugin.sh  注册到 DSH profile（install.sh 自动调用）
   setup-second-qq.sh   复制 QQ.app 实现大小号同时在线
   start-surfcore.sh    启动机器人（QQ + 桥接）
   uninstall.sh         卸载

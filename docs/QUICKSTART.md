@@ -76,15 +76,20 @@ bash scripts/setup-second-qq.sh
 
 ## 5. 把插件装进 DSH
 
-DSH 桌面版的 profile 在 `~/.dsh/profiles/desktop/`，**CLI 的 `--profile desktop` 会被拒绝**，
-所以手工注册：
+`install.sh` 检测到 `~/.dsh/profiles/desktop` 时会**自动注册**。手动执行（或重新注册）：
 
-1. `package.json` → `dsh.profile.bundles` 追加 `"surfcore"`，`dependencies` 加 `"surfcore": "link:<安装目录>/surfcore"`
-2. `node_modules/surfcore` 链到 `<安装目录>/surfcore`
-3. 合并 `config/cordis.patch.example.yml` 的内容（`desktop-shell.openBrowser: true`）
-4. 重启 DSH，`设置 → SurfCore` 出现即成功
+```bash
+bash scripts/setup-dsh-plugin.sh --dir "$HOME/Desktop/qq-bot/surfcore"
+```
 
-> 插件依赖 `exports` 里有 `"./package.json"`（补丁 0003 已修）；否则 DSH 会静默跳过客户端模块。
+它会（幂等，带备份）：
+1. `package.json` → `bundles` 追加 `surfcore`，`dependencies.surfcore = link:<安装目录>`
+2. `node_modules/surfcore` 软链到安装目录
+3. `cordis.patch.yml` 里 `desktop-shell` 设 `openBrowser: true` / `networkExposure: loopback`（桥接 :3100 才能被访问）
+
+然后**重启 DSH**，`设置 → SurfCore` 出现即成功。
+
+> 若你的 DSH 用了非默认 profile 路径：`--profile <目录>`。
 
 ## 6. 验证
 

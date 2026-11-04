@@ -69,7 +69,7 @@ for p in "$HERE"/patches/*.patch; do
   if git -C surfcore apply --check "$p" 2>/dev/null; then
     git -C surfcore apply "$p" && say "  ✅ $name"
   elif git -C surfcore apply --reverse --check "$p" 2>/dev/null; then
-    say "  ↷ $name（已应用）"
+    say "  ↷ ${name}（已应用）"
   else
     say "  ⚠️ $name 应用失败（上游可能已变更），继续"
   fi
@@ -112,7 +112,7 @@ cfg.allow.groups = String(process.env.ALLOW_GROUP || '').split(',').map(s => Num
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
 NODE
   mv "$TMPCFG" surfcore/config.json
-  say "  ✅ config.json（ownerQQ=$OWNER_QQ，consoleToken 已生成）"
+  say "  ✅ config.json（ownerQQ=${OWNER_QQ}，consoleToken 已生成）"
 else
   say "  ↷ config.json 已存在，保留"
 fi
@@ -131,6 +131,15 @@ curl -sS -X POST -H "x-console-token: \$TOKEN" http://127.0.0.1:3100/api/stop >/
 echo "已请求停止桥接"
 EOF
 chmod +x "$INSTALL_DIR/start.command" "$INSTALL_DIR/stop.command"
+
+# ---- 自动注册到 DSH（若存在 profile）----
+PROFILE="$HOME/.dsh/profiles/desktop/package.json"
+if [ -f "$PROFILE" ]; then
+  say "检测到 DSH 桌面版 profile，注册 SurfCore 插件…"
+  bash "$HERE/scripts/setup-dsh-plugin.sh" --dir "$INSTALL_DIR/surfcore" || say "⚠️ 自动注册失败，可稍后手动执行 scripts/setup-dsh-plugin.sh"
+else
+  say "未检测到 DSH 桌面版 profile（$PROFILE），跳过插件注册"
+fi
 
 cat <<EOF
 
