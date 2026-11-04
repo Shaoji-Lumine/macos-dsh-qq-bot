@@ -10,6 +10,15 @@
 
 ## 桥接返回 403 / `dshReady: false`
 
+**先跑检查脚本**（DSH 设置一改，`openBrowser` 可能被重写回 false）：
+
+```bash
+bash scripts/check-dsh-fence.sh --fix
+```
+
+修复后 Cmd+Q 重启 DSH，再重启桥接。现象：桥接日志 `dshReady=false`、事件流 0 帧、DSH 返回 `403 forbidden`、QQ 消息没人回。
+
+
 DSH 桌面端默认拒绝非渲染进程访问本机 HTTP。在 `~/.dsh/profiles/desktop/cordis.patch.yml`：
 
 ```yaml
