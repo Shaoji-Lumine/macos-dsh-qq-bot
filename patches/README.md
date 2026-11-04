@@ -1,5 +1,8 @@
 # Patches
 
+> 本目录的补丁是对上游 MIT 代码的修改，按仓库根目录 [LICENSE](../LICENSE) 的 MIT 条款发布；
+> 上游版权与来源见 [NOTICE.md](../NOTICE.md)。
+
 对 `Mieksido/surfcore`（v0.8.8 / `0deb826`）的补丁，按顺序应用：
 
 ```bash
