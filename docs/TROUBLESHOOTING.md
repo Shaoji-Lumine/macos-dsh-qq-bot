@@ -18,6 +18,15 @@ bash scripts/check-dsh-fence.sh --fix
 
 修复后 Cmd+Q 重启 DSH，再重启桥接。现象：桥接日志 `dshReady=false`、事件流 0 帧、DSH 返回 `403 forbidden`、QQ 消息没人回。
 
+**永久守护**（两层，装一次就行）：
+
+```bash
+bash scripts/install-fence-guard.sh
+```
+
+- 第一层：LaunchAgent（`com.surfcore.dsh-fence`）监视 profile 文件变化 + 每分钟检查，被改坏秒级修回（日志 `~/Library/Logs/dsh-fence-guard.log`）
+- 第二层：SurfCore 插件启动/每 2 分钟自查，兜底 DSH 自身写回（补丁 0010）
+
 
 DSH 桌面端默认拒绝非渲染进程访问本机 HTTP。在 `~/.dsh/profiles/desktop/cordis.patch.yml`：
 

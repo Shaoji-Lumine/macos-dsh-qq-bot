@@ -141,6 +141,12 @@ else
   say "未检测到 DSH 桌面版 profile（$PROFILE），跳过插件注册"
 fi
 
+# ---- macOS 宿主围栏永久守卫（LaunchAgent）----
+if [ -f "$HOME/.dsh/profiles/desktop/cordis.patch.yml" ]; then
+  say "安装宿主围栏守卫（防止 DSH 设置把 openBrowser 改回 false 导致 403）…"
+  bash "$HERE/scripts/install-fence-guard.sh" || say "⚠️ 围栏守卫安装失败（可手动跑 scripts/install-fence-guard.sh）"
+fi
+
 cat <<EOF
 
 ✅ 安装完成
