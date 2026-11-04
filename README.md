@@ -45,6 +45,10 @@ bash scripts/install.sh --dir "$HOME/Desktop/qq-bot"
 2. `scripts/start-surfcore.sh` 启动机器人（无窗口）
 3. `scripts/setup-second-qq.sh` 生成「QQ大号」副本（有窗口，你自己聊天用）
 
+## 完整教程
+
+从安装到日常使用、运维、排障的完整说明见 [`docs/USAGE.md`](docs/USAGE.md)。
+
 ## 仓库结构
 
 ```
