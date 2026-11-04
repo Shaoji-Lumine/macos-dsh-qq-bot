@@ -64,7 +64,7 @@
     },
     "send": {
       "maxSendPerMinute": 8,
-      "maxSendPerHour": 200
+      "maxSendPerHour": 0
     },
     "tokenGuard": {
       "enabled": true,
