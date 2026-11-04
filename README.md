@@ -1,6 +1,6 @@
 # macOS DSH QQ Bot
 
-> 本项目是 [Mieksido/surfcore](https://github.com/Mieksido/surfcore)（MIT）的 **macOS 移植层**：
+> 本项目是 [Mieksido/surfcore](https://github.com/Mieksido/surfcore)（MIT）的 **非官方社区 macOS 移植层**：
 > 只提供补丁、安装脚本与文档，不包含上游仓库本身。
 >
 > 在 macOS（Apple Silicon）上跑一个住在 DeepSeek Harness（DSH）里的 QQ 机器人：
