@@ -1,0 +1,6 @@
+# 把这份内容合并进 ~/.dsh/profiles/desktop/cordis.patch.yml
+# 目的：让 DSH 桌面端允许本机回环请求（桥接 :3100 才能被访问）
+- id: desktop-shell
+  config:
+    openBrowser: true
+    networkExposure: loopback

@@ -1,0 +1,175 @@
+diff --git a/plugins/surfcore/lib/index.js b/plugins/surfcore/lib/index.js
+index 97cf530..d83b197 100644
+--- a/plugins/surfcore/lib/index.js
++++ b/plugins/surfcore/lib/index.js
+@@ -1914,6 +1914,14 @@ ${body}`;
+     const explicit = String(cfg.launchScript ?? '').trim();
+     if (explicit) return path.isAbsolute(explicit) ? explicit : path.resolve(QQBOT_ROOT, explicit);
+     const base = String(cfg.launcherPath ?? '').trim();
++    // macOS 移植：mac 上没有 launcher.bat/SnowLuma.exe。运行时是 NapCat 挂载的
++    // 官方 QQ.app —— 「启动 QQ」就是打开这个 .app（NapCat 入口由安装器写进 QQ 的
++    // package.json，打开同一个 app 即可）。允许配置 launcherPath 指向任意 .app。
++    if (process.platform === 'darwin') {
++      if (base) return path.isAbsolute(base) ? base : path.resolve(QQBOT_ROOT, base);
++      const fallback = '/Applications/QQ.app';
++      try { return fs.existsSync(fallback) ? fallback : ''; } catch { return ''; }
++    }
+     if (!base) return '';
+     const root = path.isAbsolute(base) ? base : path.resolve(QQBOT_ROOT, base);
+     const candidates = [
+@@ -1935,6 +1943,12 @@ ${body}`;
+   // 端口从 SnowLuma 自己的 runtime.json 读，读不到就回退 5100。
+   function snowLumaWebui() {
+     const cfg = readQqConfig().config?.snowluma ?? {};
++    // macOS 移植（2026-11-03）：mac 上的 QQ 运行时是 NapCat（挂载官方 QQ.app），
++    // 它没有 SnowLuma 的 runtime.json，WebUI 用 NapCat 自己的 6099 端口。
++    if (process.platform === 'darwin') {
++      const port = Number(cfg.napcatWebuiPort) > 0 ? Number(cfg.napcatWebuiPort) : 6099;
++      return { port, url: `http://127.0.0.1:${port}` };
++    }
+     let port = 5100;
+     try {
+       const root = String(cfg.launcherPath ?? '').trim();
+@@ -1951,6 +1965,11 @@ ${body}`;
+     if (process.env.SURFCORE_SKIP_AUTOSTART === '1') return false;
+     if (!/^http:\/\/127\.0\.0\.1:\d{2,5}$/.test(String(url))) return false;
+     try {
++      // macOS 移植：mac 没有 cmd/start，用 open 交给系统默认浏览器。
++      if (process.platform === 'darwin') {
++        spawn('open', [String(url)], { detached: true, stdio: 'ignore' }).unref();
++        return true;
++      }
+       spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/c', 'start', '""', `"${url}"`], {
+         detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true,
+       }).unref();
+@@ -2035,7 +2054,11 @@ ${body}`;
+     try {
+       const cwd = path.dirname(launcher);
+       const lower = launcher.toLowerCase();
+-      if (lower.endsWith('.bat') || lower.endsWith('.cmd')) {
++      if (process.platform === 'darwin') {
++        // macOS 移植：.app 必须交给 open 启动（直接 spawn 会报权限/找不到可执行）。
++        // 用参数数组而不是拼 shell 串，路径里有空格/中文也不需要转义。
++        spawn('open', [launcher], { detached: true, stdio: 'ignore' }).unref();
++      } else if (lower.endsWith('.bat') || lower.endsWith('.cmd')) {
+         // 2026-10-22 审计：旧写法把 basename 拼进 cmd 命令串，路径里带 `&` 可注入命令。
+         // 现在整条路径作为「verbatim 参数」交给 cmd，并且拒绝含引号/换行的路径。
+         if (/["\r\n]/.test(launcher)) return { ok: false, error: '启动脚本路径含引号或换行，拒绝执行' };
+diff --git a/plugins/surfcore/lib/snowluma-install.js b/plugins/surfcore/lib/snowluma-install.js
+index 2898829..48af620 100644
+--- a/plugins/surfcore/lib/snowluma-install.js
++++ b/plugins/surfcore/lib/snowluma-install.js
+@@ -24,6 +24,7 @@ function statOf(p) {
+ /**
+  * 把一个路径归一到 SnowLuma 安装根目录。
+  * 接受：根目录（里面有 app）、app 目录、app\launcher.bat、launcher.bat、SnowLuma.exe。
++ * macOS：接受 .app 包本身（运行时是 NapCat 挂载的官方 QQ.app）。
+  * 返回 { root, launcher }；认不出返回 null。
+  */
+ export function normalizeSnowLumaInstall(raw) {
+@@ -31,6 +32,15 @@ export function normalizeSnowLumaInstall(raw) {
+   if (!text) return null;
+   const abs = path.resolve(text);
+ 
++  // ⓪ macOS 移植：NapCat 挂在官方 QQ.app 上，「安装位置」就是这个 .app。
++  // 判据用包结构（Contents/Info.plist）而不是扩展名，避免把普通目录当 app。
++  if (process.platform === 'darwin') {
++    const isAppBundle = (p) => {
++      try { return fs.statSync(path.join(p, 'Contents', 'Info.plist')).isFile(); } catch { return false; }
++    };
++    if (isAppBundle(abs)) return { root: abs, launcher: abs };
++  }
++
+   // ① 直接选了启动文件：launcher.bat 或 SnowLuma.exe
+   const st = statOf(abs);
+   if (st?.isFile()) {
+@@ -83,6 +93,12 @@ export function snowLumaCandidates({ snowluma = {}, extraPaths = [] } = {}) {
+   add(process.env.SNOWLUMA_DIR);
+ 
+   const home = os.homedir();
++  // macOS 移植：NapCat 装在官方 QQ.app 上，优先探测 QQ 的常见位置；
++  // 下面 Windows 的 SnowLuma 候选一并保留（同一份代码也能被别的平台/迁移场景复用）。
++  if (process.platform === 'darwin') {
++    add('/Applications/QQ.app');
++    add(path.join(home, 'Applications', 'QQ.app'));
++  }
+   const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+   const programFiles = process.env.ProgramFiles || 'C:/Program Files';
+   const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:/Program Files (x86)';
+@@ -115,20 +131,27 @@ function explicitList(list) {
+  */
+ export function snowLumaMissingReport({ picked = '', tried = [] } = {}) {
+   const target = String(picked || '').trim();
++  const darwin = process.platform === 'darwin';
+   if (target) {
+     return {
+       code: 'snowluma_path_invalid',
+-      title: '这个路径里没有 SnowLuma',
+-      error: `没认出 SnowLuma：${target}`,
+-      hint: '要能在这里找到 app\\launcher.bat、launcher.bat 或 SnowLuma.exe。请选解压出来的 SnowLuma2 根目录（里面有 app），或直接选 app\\launcher.bat。',
++      title: darwin ? '这个路径里没有 QQ.app' : '这个路径里没有 SnowLuma',
++      error: `没认出运行时：${target}`,
++      hint: darwin
++        ? 'macOS 上的 QQ 运行时是 NapCat 挂载的官方 QQ.app：请选 /Applications/QQ.app。还没装 NapCat 就先运行 NapCat-Mac-Installer。'
++        : '要能在这里找到 app\\launcher.bat、launcher.bat 或 SnowLuma.exe。请选解压出来的 SnowLuma2 根目录（里面有 app），或直接选 app\\launcher.bat。',
+       tried,
+     };
+   }
+   return {
+     code: 'snowluma_not_found',
+-    title: '没找到 SnowLuma',
+-    error: '常见位置里都没有 SnowLuma（可能还没解压，或装在了别的目录）。',
+-    hint: '点「浏览…」选 SnowLuma2 解压出来的根目录（里面有 app）；还没装就点「打开官方下载页」。',
++    title: darwin ? '没找到 QQ.app' : '没找到 SnowLuma',
++    error: darwin
++      ? '常见位置里都没有 QQ.app（mac 上 NapCat 需要官方 QQ 客户端）。'
++      : '常见位置里都没有 SnowLuma（可能还没解压，或装在了别的目录）。',
++    hint: darwin
++      ? '先安装官方 QQ 到 /Applications/QQ.app，再运行 NapCat-Mac-Installer 把 NapCat 装进去、切换 QQ 入口。'
++      : '点「浏览…」选 SnowLuma2 解压出来的根目录（里面有 app）；还没装就点「打开官方下载页」。',
+     tried,
+   };
+ }
+diff --git a/plugins/surfcore/package.json b/plugins/surfcore/package.json
+index dad4360..09c47a7 100644
+--- a/plugins/surfcore/package.json
++++ b/plugins/surfcore/package.json
+@@ -11,7 +11,8 @@
+     "./qq-mode": "./lib/qq-mode.js",
+     "./locale/*.json": "./locale/*.json",
+     "./icon": "./icon.svg",
+-    "./qq-tool-restrict.mjs": "./qq-tool-restrict.mjs"
++    "./qq-tool-restrict.mjs": "./qq-tool-restrict.mjs",
++    "./package.json": "./package.json"
+   },
+   "scripts": {
+     "test": "node scripts/test-snowluma-install.mjs && node scripts/test-ui-contrast.mjs && node scripts/test-voice-health.mjs && node scripts/test-voice-flatten.mjs && node scripts/test-voice-progress-instance.mjs && node scripts/test-doctor.mjs && node scripts/test-http-guard.mjs && node scripts/test-pet-api.mjs && node scripts/test-pet-dir-guard.mjs && node scripts/test-updates.mjs && node scripts/test-updates-version.mjs && node scripts/test-updates-pending.mjs && node scripts/test-updates-voice.mjs && node scripts/test-update-helper-env.mjs && node scripts/test-pet-update.mjs && node scripts/test-pet-install-guards.mjs && node scripts/test-pet-install-form.mjs && node scripts/test-pet-uninstall-keep.mjs && node scripts/test-bridge-status.mjs && node scripts/test-privacy.mjs && node scripts/test-align.mjs && node scripts/test-align-label-api.mjs && node scripts/test-store.mjs && node scripts/test-persona.mjs && node scripts/test-character-api.mjs && node scripts/test-admin-config-api.mjs && node scripts/test-admin-bili-prompt.mjs && node scripts/test-memory-card-api.mjs && node scripts/test-msgfeed-oid.mjs && node scripts/test-bili-automation.mjs && node scripts/test-automation-config-api.mjs && node scripts/test-kind-signals.mjs && node scripts/test-client-contract.mjs && node scripts/test-host-smoke.mjs && node scripts/test-platform-start-host.mjs && node scripts/test-pet-chat.mjs && node ../../scripts/test-platform-start.mjs && node ../../scripts/test-token-budget-service.mjs",
+diff --git a/plugins/surfcore/scripts/test-snowluma-install.mjs b/plugins/surfcore/scripts/test-snowluma-install.mjs
+index 0e5bb2d..9c6a692 100644
+--- a/plugins/surfcore/scripts/test-snowluma-install.mjs
++++ b/plugins/surfcore/scripts/test-snowluma-install.mjs
+@@ -103,17 +103,22 @@ try {
+   }
+ 
+   console.log('## 4. 失败必须给结构化报告（弹窗要用：code / title / error / hint）');
++  const darwin = process.platform === 'darwin';
+   {
+     const notFound = snowLumaMissingReport({ tried: ['C:/a', 'C:/b'] });
+     ok(notFound.code === 'snowluma_not_found', '自动检测失败 → code=snowluma_not_found');
+     ok(Boolean(notFound.title) && Boolean(notFound.error), '有弹窗标题和人读的错误（不是空字符串）');
+-    ok(/浏览/.test(notFound.hint) && /下载/.test(notFound.hint), 'hint 给出两个下一步：浏览… / 官方下载页');
++    // macOS 移植：mac 上运行时是 NapCat 挂载的官方 QQ.app，一步是「装 QQ + 跑 NapCat 安装器」，
++    // 没有 Windows 的「浏览… / 官方下载页」两条。断言按平台分开，Windows 文案保持原样。
++    ok(darwin
++      ? (/QQ\.app/.test(notFound.hint) && /NapCat/.test(notFound.hint))
++      : (/浏览/.test(notFound.hint) && /下载/.test(notFound.hint)), 'hint 给出可执行的两个下一步');
+     ok(notFound.tried.length === 2, 'tried 原样带给前端（弹窗里可展开看试过哪些位置）');
+ 
+     const bad = snowLumaMissingReport({ picked: 'D:/x', tried: ['D:/x'] });
+     ok(bad.code === 'snowluma_path_invalid', '手选路径失败 → code=snowluma_path_invalid');
+     ok(bad.error.includes('D:/x'), '错误里带上用户选的路径（用户知道在说哪个目录）');
+-    ok(/launcher\.bat/.test(bad.hint), 'hint 说明要能找到 launcher.bat');
++    ok(darwin ? /QQ\.app/.test(bad.hint) : /launcher\.bat/.test(bad.hint), 'hint 说明要填什么路径');
+     ok(Boolean(bad.title), '手选失败也有独立标题（弹窗标题不重复用 error）');
+   }
+ } finally {

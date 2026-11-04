@@ -1,0 +1,56 @@
+{
+  "dsh": {
+    "baseUrl": "http://127.0.0.1:3080",
+    "provider": "deepseek-official",
+    "model": "deepseek-flash",
+    "reasoningEffort": "max",
+    "followDefaultModel": true,
+    "authToken": "",
+    "authHeader": "authorization",
+    "authPrefix": "Bearer",
+    "allowRemote": false
+  },
+  "snowluma": {
+    "wsUrl": "ws://127.0.0.1:3001",
+    "httpUrl": "http://127.0.0.1:3000",
+    "accessToken": "CHANGE_ME",
+    "followDiscoveredEndpoint": false,
+    "silenceWarnMs": 600000,
+    "launcherPath": "/Applications/QQ.app",
+    "launchScript": "",
+    "allowLaunch": true,
+    "homeDir": "",
+    "downloadUrl": "https://github.com/NapNeko/NapCatQQ/releases/latest",
+    "napcatWebuiPort": 6099
+  },
+  "ownerQQ": 0,
+  "admin": { "qq": "", "biliMid": "", "biliName": "", "displayName": "", "gentle": false },
+  "agentPreset": "qq-chat",
+  "workspaceTitle": "QQ 聊天",
+  "allow": { "private": [], "groups": [] },
+  "deny": { "users": [], "private": [], "groups": [] },
+  "allowAllWhenEmpty": false,
+  "consolePort": 3100,
+  "consoleToken": "",
+  "sessionCwd": "",
+  "sendDelayMs": 300,
+  "questionTimeoutMs": 300000,
+  "socialV2": {
+    "vision": { "imageInput": "true" },
+    "sticker": { "enabled": true, "ownerOnly": true, "includeInPrompt": true, "promptMaxStickers": 8 },
+    "voice": { "inboundAsr": true, "enabled": false },
+    "send": { "maxSendPerMinute": 8, "maxSendPerHour": 200 },
+    "tokenGuard": {
+      "enabled": true,
+      "ownerUnlimited": true,
+      "maxWakesPerDay": 30,
+      "privateMaxWakesPerDay": 20,
+      "minWakeGapMs": 60000,
+      "directBypassGap": true,
+      "directBypassDay": true,
+      "replyCheckFree": true,
+      "maxOutboundPerTurn": 10,
+      "maxDailyCostCNY": 10
+    }
+  }
+}
