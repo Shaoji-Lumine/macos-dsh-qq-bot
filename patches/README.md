@@ -20,6 +20,7 @@ for p in ../patches/*.patch; do git apply "$p"; done
 | `0006-bili-edge-macos.patch` | B站 扫码登录在 macOS 上也能找到 Edge（/Applications 路径） |
 | `0004-bridge-macos-fixes.patch` | 桥接：重启守护、表情库合并、表情包 owner-only、小黄脸中文名、入站语音转写、视觉输入、主人豁免 Token 防爆破 |
 | `0008-macos-autostart-qq.patch` | DSH 启动/自愈时自动拉起 QQ（macOS，带 `--no-sandbox`），与桥接一起自动启动 |
+| `0011-qq-send-limit-backoff.patch` | QQ 返回 `result 120`（风控/频控）时只冷却当前会话 5 分钟，不再全局暂停 30 分钟（避免群被限流时私聊也不回） |
 | `0010-dsh-fence-selfheal.patch` | DSH 改设置/装插件把 `openBrowser` 写回 false 时，插件自动修回（防 403 停摆） |
 | `0009-close-after-send-failed.patch` | 收尾被「发送失败」永久卡死：工具发送成功也清零失败标记、失败 10 分钟过期、新增 `abandon` 明确放弃 |
 | `0007-qq-bili-look.patch` | 给 QQ 侧加只读的 `qq_look_bilibili_video` 工具（读简介/字幕/弹幕/热评 + 抽帧九宫格；B站 未登录时返回提示） |
