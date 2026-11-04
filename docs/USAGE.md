@@ -155,14 +155,26 @@ curl -s -H "x-console-token: $TOKEN" http://127.0.0.1:3100/api/status | python3 
   "consoleToken": "控制台令牌（脚本生成，勿外传）",
   "allow": { "private": [12345678], "groups": [] },  // 白名单；空 = 不回
   "deny":  { "users": [], "private": [], "groups": [] },
+
+  "role": {
+    "maxInjectChars": 6000,             // 核心卡注入上限（字符）
+    "layerMaxChars": {                  // 分层独立预算：各层互不挤占；0 = 关闭该层
+      "identity": 600, "tone": 1200, "scene": 800, "daily": 600
+    }
+  },
+
   "socialV2": {
     "vision":     { "imageInput": "true" },   // 允许把表情/图片发给模型（支持视觉时）
     "sticker":    { "enabled": true, "ownerOnly": true }, // 表情包只有主人能要
     "voice":      { "inboundAsr": true, "enabled": false }, // 入站语音转文字
     "send":       { "maxSendPerMinute": 8 },
+    "prompt": {
+      // 【积极性】/【反AI味】覆盖：空串 = 默认文案；false = 不注入；字符串 = 自定义
+      "antiAi": "", "proactive": ""
+    },
     "tokenGuard": {
       "enabled": true,
-      "ownerUnlimited": true,        // 和主人聊不限流
+      "ownerUnlimited": true,        // 和主人聊不限流（额度仍生效）
       "maxWakesPerDay": 30,          // 每个群每日唤醒上限
       "privateMaxWakesPerDay": 20,   // 私聊每日唤醒上限
       "minWakeGapMs": 60000,         // 最小唤醒间隔

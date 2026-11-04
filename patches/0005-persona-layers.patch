@@ -1,0 +1,347 @@
+diff --git a/config.example.json b/config.example.json
+index 74e7a19..542ff8c 100644
+--- a/config.example.json
++++ b/config.example.json
+@@ -11,7 +11,13 @@
+     "allowRemote": false
+   },
+   "role": {
+-    "maxInjectChars": 6000
++    "maxInjectChars": 6000,
++    "layerMaxChars": {
++      "identity": 600,
++      "tone": 1200,
++      "scene": 800,
++      "daily": 600
++    }
+   },
+   "biliBridge": {
+     "enabled": true,
+@@ -372,6 +378,10 @@
+       "maxBytes": 8388608,
+       "maxPixels": 64000000,
+       "maxCount": 5
++    },
++    "prompt": {
++      "antiAi": "",
++      "proactive": ""
+     }
+   },
+   "webSearch": {
+diff --git a/plugins/surfcore/lib/pet-chat.js b/plugins/surfcore/lib/pet-chat.js
+index bec73c1..ace0ca1 100644
+--- a/plugins/surfcore/lib/pet-chat.js
++++ b/plugins/surfcore/lib/pet-chat.js
+@@ -273,6 +273,8 @@ export function createPetChatService({ ctx, stateDir, pluginLog = () => {}, toke
+       daily: readPersonaLayerText('daily'),
+       mode: 'v2',
+       maxChars: 4200,
++      // 桌宠与 QQ/B站 同一套分层预算：核心之外，语气/场景/日常各自注入（2026-11-04）
++      layerMaxChars: { identity: 500, tone: 900, scene: 600, daily: 500 },
+       sceneId: 'pet',
+     }).text || personaCore;
+     let name = String(cur?.name || '').trim();
+diff --git a/plugins/surfcore/lib/scheduler.js b/plugins/surfcore/lib/scheduler.js
+index dca683e..3089d4d 100644
+--- a/plugins/surfcore/lib/scheduler.js
++++ b/plugins/surfcore/lib/scheduler.js
+@@ -89,8 +89,22 @@ function personaCardBlock() {
+     return bits.length ? `［身份］${bits.join('，')}。（以此为准，别用别的称呼 ✓）` : ''
+   }
+   const max = Math.max(600, Math.min(6000, Number(unified.persona?.compactChars) || 2200))
++  // 分层独立预算（2026-11-04）：B站 以前只有一个 compactChars 总预算，核心先占满就把语气/场景/日常挤掉，
++  // 评论里反馈的「B站没有分层」就是这个。这里给每层各自的上限；仍可用 unified.persona.layerMaxChars 覆盖。
++  const layerCaps = (() => {
++    const src = unified.persona?.layerMaxChars && typeof unified.persona.layerMaxChars === 'object'
++      ? unified.persona.layerMaxChars : {}
++    const out = { identity: 400, tone: 800, scene: 600, daily: 400 }
++    for (const key of Object.keys(out)) {
++      if (src[key] === undefined) continue
++      const n = Math.round(Number(src[key]))
++      if (Number.isFinite(n) && n >= 0) out[key] = n
++    }
++    return out
++  })()
+   const composed = composePersonaLayers({
+     core: card,
++    layerMaxChars: layerCaps,
+     // 身份底座：B站 也必须知道“我是谁、主人是谁”，不能只靠日常层里的那一行。
+     identity: buildPersonaIdentity({
+       name: personaNameFromCard(card),
+diff --git a/scripts/test-audit.mjs b/scripts/test-audit.mjs
+index 960bf7d..9891b37 100644
+--- a/scripts/test-audit.mjs
++++ b/scripts/test-audit.mjs
+@@ -254,6 +254,8 @@ const tests = [
+   'test-launch-components.mjs',
+   // 人格卡分层：核心/场景/日常、QQ群聊/私聊、预算裁剪、v1/v2 小节过滤。
+   'test-persona-layers.mjs',
++  // 分层独立预算 / 身份去重 / 旧总预算兼容（2026-11-04 评论区反馈「分层不生效」的回归）。
++  'test-persona-layer-budget.mjs',
+   // Phase 0A：遥测只读、模型调用去重、工具结果大小、报告聚合。
+   'test-context-telemetry.mjs',
+   // Phase 1A：按 wakeId 归属、bridge/plugin 去重、路径/交付/成本聚合。
+diff --git a/scripts/test-persona-layer-budget.mjs b/scripts/test-persona-layer-budget.mjs
+new file mode 100644
+index 0000000..abcc04f
+--- /dev/null
++++ b/scripts/test-persona-layer-budget.mjs
+@@ -0,0 +1,68 @@
++// 人格分层独立预算 / 身份去重 / 提示词风格可配置 —— 回归测试
++// 背景：视频评论区反馈「分层不生效、只注入核心、撑爆注入上限」（2026-11-04）
++import assert from 'node:assert/strict';
++import { composePersonaLayers, PERSONA_LAYER_DEFAULT_CAPS } from '../src/persona-layers.js';
++
++const pad = (s, n) => s.repeat(Math.ceil(n / s.length)).slice(0, n);
++
++// 1) 分层独立预算：核心写满，语气/场景/日常仍能注入
++{
++  const r = composePersonaLayers({
++    core: '你是测试角色；你的主人是测试主人。' + pad('核心设定。', 4000),
++    identity: '你是测试角色；你的主人是测试主人。',
++    tone: pad('语气层。', 2000),
++    scene: pad('场景层。', 1500),
++    daily: pad('日常层。', 1000),
++    maxChars: 6000,
++    layerMaxChars: PERSONA_LAYER_DEFAULT_CAPS,
++    sceneId: 'qq-group',
++  });
++  assert.equal(r.budgetMode, 'layers', '应走分层预算模式');
++  assert.ok(r.layers.core > 0, '核心应有内容');
++  assert.ok(r.layers.core <= 6000, '核心不应超过 maxChars');
++  assert.ok(r.layers.tone > 0, '语气层应被注入（旧逻辑会被核心挤掉）');
++  assert.ok(r.layers.scene > 0, '场景层应被注入');
++  assert.ok(r.layers.daily > 0, '日常层应被注入');
++  assert.ok(r.layers.tone <= PERSONA_LAYER_DEFAULT_CAPS.tone + 20, '语气层应受独立上限约束');
++  assert.ok(r.text.includes('【人格语气】') && r.text.includes('【人格日常】'), '应带层标题');
++  assert.ok(!r.text.includes('【身份底座】'), '核心已含“你的主人是”时，身份底座应去重');
++}
++
++// 2) 某一层设为 0 = 关闭该层
++{
++  const r = composePersonaLayers({
++    core: '核心', tone: '语气', scene: '场景', daily: '日常',
++    maxChars: 6000, layerMaxChars: { ...PERSONA_LAYER_DEFAULT_CAPS, tone: 0 },
++  });
++  assert.ok(!r.text.includes('【人格语气】'), 'tone=0 时不应注入语气层');
++  assert.ok(r.text.includes('【人格日常】'), '其他层不受影响');
++}
++
++// 3) 不传 layerMaxChars：保持旧的总预算行为（向后兼容）
++{
++  const r = composePersonaLayers({ core: pad('a', 6000), tone: pad('b', 3000), maxChars: 6000 });
++  assert.equal(r.budgetMode, 'total', '未传分层预算时走旧逻辑');
++  assert.equal(r.truncated, true, '总预算不够时应标记截断');
++}
++
++// 4) 核心超过 maxChars：分层模式下仍受核心上限约束并标记截断
++{
++  const r = composePersonaLayers({
++    core: pad('c', 7000), tone: '语气',
++    maxChars: 6000, layerMaxChars: {},
++  });
++  assert.ok(r.layers.core <= 6000, '核心应被截断到 maxChars');
++  assert.equal(r.truncated, true, '截断应被标记');
++  assert.ok(r.layers.tone > 0, '语气层依然有独立预算');
++}
++
++// 5) 核心没有身份描述时，身份底座正常注入
++{
++  const r = composePersonaLayers({
++    core: '只是一个角色卡', identity: '你是测试角色；你的主人是测试主人。',
++    maxChars: 6000, layerMaxChars: {},
++  });
++  assert.ok(r.text.includes('【身份底座】'), '核心没写身份时应注入身份底座');
++}
++
++console.log('✅ 人格分层预算 / 身份去重 / 兼容性 全部通过');
+diff --git a/src/bridge.js b/src/bridge.js
+index b8d19ea..f126252 100644
+--- a/src/bridge.js
++++ b/src/bridge.js
+@@ -122,7 +122,7 @@ import {
+   activeMemoryPaths, activePersonaFile, activePlatformStateDir, characterPaths, readCurrentCharacter,
+   readPersonaLayerText,
+ } from './character-persona.js';
+-import { composePersonaLayers, personaSceneFromKey } from './persona-layers.js';
++import { composePersonaLayers, personaSceneFromKey, PERSONA_LAYER_DEFAULT_CAPS } from './persona-layers.js';
+ import { isHardDirectWakeReason, hasStrictDirectUnread } from './wake-policy.js';
+ import { DEFAULT_GROUP_POLICY, normalizeGroupPolicy, groupTier, shouldSkipTriggerForTier } from './group-policy.js';
+ import { buildContextSnapshot, DEFAULT_SNAPSHOT_CAPS } from './context-snapshot.js';
+@@ -1314,7 +1314,23 @@ function loadConfig() {
+   }
+ 
+   // 人格卡注入上限（字符）。历史硬编码 6000，现在可配：每条约 4~6k token 的成本护栏。
+-  cfg.role = { maxInjectChars: ROLE_INJECT_MAX_CHARS_DEFAULT, ...(file.role ?? {}) };
++  cfg.role = {
++    maxInjectChars: ROLE_INJECT_MAX_CHARS_DEFAULT,
++    // 分层独立预算（2026-11-04）：核心之外，语气/场景/日常各有一份，互不挤占。
++    // 0 = 该层不注入；未配置用默认值（identity 600 / tone 1200 / scene 800 / daily 600）。
++    layerMaxChars: { ...PERSONA_LAYER_DEFAULT_CAPS },
++    ...(file.role ?? {}),
++  };
++  cfg.role.layerMaxChars = (() => {
++    const src = cfg.role.layerMaxChars && typeof cfg.role.layerMaxChars === 'object' ? cfg.role.layerMaxChars : {};
++    const out = { ...PERSONA_LAYER_DEFAULT_CAPS };
++    for (const key of Object.keys(out)) {
++      if (src[key] === undefined) continue;
++      const n = Math.round(Number(src[key]));
++      if (Number.isFinite(n) && n >= 0) out[key] = n;
++    }
++    return out;
++  })();
+   roleInjectMaxChars = applyRoleInjectLimit(cfg.role.maxInjectChars);
+   if (roleInjectMaxChars !== cfg.role.maxInjectChars) {
+     log(`人格注入上限已按范围校正为 ${roleInjectMaxChars} 字符（配置值 ${cfg.role.maxInjectChars}，允许 1000~20000）`);
+@@ -13626,6 +13642,7 @@ async function main() {
+     const identity = personaIdentityText();
+     const composed = composePersonaLayers({
+       core, scene, daily, tone, identity, personaMode, mode, maxChars: roleInjectMaxChars, sceneId,
++      layerMaxChars: cfg.role?.layerMaxChars,
+     });
+     const base = composed.text || '';
+     // personaOnly：只要人格卡正文（唤醒提示词用）。管理员规则 / B站简报 / 记忆卡
+@@ -14705,6 +14722,21 @@ async function main() {
+     return `【当前角色】${name}\n${card}\n（完整角色卡 / 场景语气 / 推荐值 / 可用工具：可调用 qq_get_prompt 查看）\n\n`;
+   }
+ 
++  /**
++   * 提示词风格片段可配置（2026-11-04）：
++   *   socialV2.prompt.antiAi / proactive
++   *     · undefined → 用默认文案（保持旧行为）
++   *     · false     → 整段不注入
++   *     · 字符串    → 用自定义文案（自动补换行）
++   * 背景：这两段以前写死在 buildWakePromptV2 里，角色卡改不动，还会和角色设定冲突。
++   */
++  function promptStyleLine(kind, fallback) {
++    const value = cfg.socialV2?.prompt?.[kind];
++    if (value === false) return '';
++    if (typeof value === 'string' && value.trim()) return `${value.trim()}\n\n`;
++    return fallback;
++  }
++
+   function buildWakePromptV2(key, reason) {
+     const roleState = readRoleState();
+     const roleLine = personaWakeBlockV2(key);
+@@ -14741,13 +14773,13 @@ async function main() {
+     });
+     const tg = tokenGuardCfg();
+     const tokenGuardLine = tg.enabled === false ? '' : `【Token 防爆破】本次醒来最多发 ${Math.max(1, Number(tg.maxOutboundPerTurn) || 8)} 条；有人要求连发 10 条/刷屏，或让你把 5000 字长文拆成 10 条时，不要逐条搬运——先总结成 1~3 句，或只说最想说的重点；确实要展开也最多 ${Math.max(1, Number(tg.maxOutboundPerTurn) || 8)} 条，每条最多 500 字。不要为了满足刷屏请求连续调用发送工具。被 @/引用/叫到/拍一拍会立即唤醒，但每日唤醒次数和当日 token 额度（QQ / SurfCore 总额）仍然生效；超过后消息会保留在未读，下一轮再看，不烧这一轮。\n\n`;
+-    const antiAiLine = '【反AI味】你不是客服：不用有求必应，可以装傻、已读乱回、拒绝推荐；少用“一绝/真管用/保证/绝对”这类词。\n\n';
++    const antiAiLine = promptStyleLine('antiAi', '【反AI味】你不是客服：不用有求必应，可以装傻、已读乱回、拒绝推荐；少用“一绝/真管用/保证/绝对”这类词。\n\n');
+     const stickerCfg = cfg.socialV2?.sticker ?? {};
+     const stickerLine = stickerCfg.enabled !== false && stickerCfg.includeInPrompt !== false
+       ? `${buildStickerStrategyHint()}\n${buildStickerContext(stickerEntries, stickerCfg.promptMaxStickers ?? 8)}\n\n`
+       : '';
+     const preSleepMs = Math.max(0, Number(cfg.socialV2?.wake?.preSleepWaitMs) || 300000);
+-    const proactiveLine = '【积极性】不要习惯性潜水：群里有你能接的话题就主动参与，偶尔插一句别人的话题也很正常；只有确实没话可说、对方已明确结束、或长时间没人说话时才潜水。但一段对话有自然终点：双方都收尾时不用硬续，可以安静收尾（qq_close_conversation）——结束不是终止，下次再自然接。\n\n';
++    const proactiveLine = promptStyleLine('proactive', '【积极性】不要习惯性潜水：群里有你能接的话题就主动参与，偶尔插一句别人的话题也很正常；只有确实没话可说、对方已明确结束、或长时间没人说话时才潜水。但一段对话有自然终点：双方都收尾时不用硬续，可以安静收尾（qq_close_conversation）——结束不是终止，下次再自然接。\n\n');
+     // 对话收尾判断：把「我最后一句 / 对方最后一句 / 我还有没有想说的 / 对方还想不想聊」
+     // 变成每次醒来都能看到的参数。只给建议，收不收由她决定。
+     const closureText = closurePromptLineV2(key, st);
+diff --git a/src/persona-layers.js b/src/persona-layers.js
+index 0f6fbf1..61022d8 100644
+--- a/src/persona-layers.js
++++ b/src/persona-layers.js
+@@ -21,6 +21,27 @@ import { selectRoleText } from './role-card.js';
+ 
+ export const PERSONA_SCENES = Object.freeze(['qq-group', 'qq-private', 'bili', 'pet']);
+ 
++/**
++ * 分层独立预算（2026-11-04，修「分层不生效」）：
++ * 以前只有一个总预算 maxChars，核心卡先占满，语气/场景/日常被挤掉，表现为「只有核心主人格」。
++ * 现在每层各自有上限、互不挤占；核心上限仍由 maxChars 控制。
++ * 0 = 该层不注入。
++ */
++export const PERSONA_LAYER_DEFAULT_CAPS = Object.freeze({
++  identity: 600, tone: 1200, scene: 800, daily: 600,
++});
++
++function normalizeLayerCaps(input) {
++  if (!input || typeof input !== 'object') return null;
++  const out = { ...PERSONA_LAYER_DEFAULT_CAPS };
++  for (const key of Object.keys(out)) {
++    if (input[key] === undefined) continue;
++    const n = Math.round(Number(input[key]));
++    if (Number.isFinite(n) && n >= 0) out[key] = n;
++  }
++  return out;
++}
++
+ export const PERSONA_SCENE_LABELS = Object.freeze({
+   'qq-group': 'QQ 群聊',
+   'qq-private': 'QQ 私聊',
+@@ -55,7 +76,7 @@ function section(id, label, text) {
+  * @param {string} [opts.sceneId] 场景 ID（用于标题）
+  */
+ export function composePersonaLayers({
+-  core = '', scene = '', daily = '', tone = '', identity = '', personaMode = 'full', mode = 'v2', maxChars = 6000, sceneId = '',
++  core = '', scene = '', daily = '', tone = '', identity = '', personaMode = 'full', mode = 'v2', maxChars = 6000, sceneId = '', layerMaxChars = null,
+ } = {}) {
+   const budget = Math.max(0, Math.round(Number(maxChars) || 0));
+   const coreText = selectRoleText(core, mode);
+@@ -63,7 +84,9 @@ export function composePersonaLayers({
+   const sceneText = selectRoleText(scene, mode);
+   const dailyText = selectRoleText(daily, mode);
+   // tone 模式不加载核心；只有旧角色既没有语气也没有场景/日常时，才回退核心，避免“没卡”。
+-  const identityText = String(identity ?? '').trim();
++  let identityText = String(identity ?? '').trim();
++  // 去重：很多角色卡开头已经写了「你是 X；你的主人是 Y」，再拼一层身份底座 = 同一段话进两遍。
++  if (identityText && /你的主人是/.test(coreText)) identityText = '';
+   const identitySection = identityText ? [section('identity', '身份底座', identityText)] : [];
+   // tone 模式只在「确实写了语气层」时才省掉核心：
+   //   · 未拆分（只有 persona.md）→ 必须注入核心，否则只剩身份底座、人设正文全丢；
+@@ -86,14 +109,43 @@ export function composePersonaLayers({
+   if (!selected.length && personaMode === 'tone' && coreText) {
+     const fallback = coreText;
+     counts.core = fallback.length;
+-    return { text: fallback, chars: fallback.length, layers: counts, omitted, truncated: false, sceneId: sceneId || '' };
++    return { text: fallback, chars: fallback.length, layers: counts, omitted, truncated: false, budgetMode: 'total', sceneId: sceneId || '' };
++  }
++  if (!selected.length) return { text: '', chars: 0, layers: counts, omitted, truncated: false, budgetMode: 'total', sceneId: sceneId || '' };
++
++  // ── 分层独立预算（新）：每层各自上限，互不挤占；核心上限 = maxChars ──
++  const caps = normalizeLayerCaps(layerMaxChars);
++  if (caps) {
++    if (budget > 0) caps.core = budget;
++    let truncatedLayered = false;
++    const countsLayered = { identity: 0, core: 0, tone: 0, scene: 0, daily: 0 };
++    const omittedLayered = [];
++    const partsLayered = [];
++    for (const item of selected) {
++      const cap = caps[item.id];
++      if (cap === 0) { omittedLayered.push(item.id); countsLayered[item.id] = 0; continue; }
++      const limit = Number.isFinite(cap) ? cap : Number.POSITIVE_INFINITY;
++      const header = selected.length > 1 ? `【${item.label}】\n` : '';
++      const allowed = limit - header.length;
++      if (allowed <= 0) { omittedLayered.push(item.id); countsLayered[item.id] = 0; continue; }
++      let text = item.text;
++      if (text.length > allowed) { text = text.slice(0, allowed).trimEnd(); truncatedLayered = true; }
++      if (!text) { omittedLayered.push(item.id); continue; }
++      const block = `${header}${text}`;
++      partsLayered.push(block);
++      countsLayered[item.id] = block.length;
++    }
++    const textLayered = partsLayered.join('\n\n').trim();
++    return {
++      text: textLayered, chars: textLayered.length, layers: countsLayered,
++      omitted: omittedLayered, truncated: truncatedLayered, budgetMode: 'layers', sceneId: sceneId || '',
++    };
+   }
+-  if (!selected.length) return { text: '', chars: 0, layers: counts, omitted, truncated: false, sceneId: sceneId || '' };
+ 
+   // 只有核心时保持旧行为：不额外加标题，避免旧角色卡注入内容发生变化。
+   if (selected.length === 1 && selected[0].id === 'core' && budget <= 0) {
+     counts.core = selected[0].text.length;
+-    return { text: selected[0].text, chars: counts.core, layers: counts, omitted, truncated: false, sceneId: sceneId || '' };
++    return { text: selected[0].text, chars: counts.core, layers: counts, omitted, truncated: false, budgetMode: 'total', sceneId: sceneId || '' };
+   }
+ 
+   let remaining = budget > 0 ? budget : Number.POSITIVE_INFINITY;
+@@ -123,5 +175,5 @@ export function composePersonaLayers({
+   }
+ 
+   const text = parts.join('\n\n').trim();
+-  return { text, chars: text.length, layers: counts, omitted, truncated, sceneId: sceneId || '' };
++  return { text, chars: text.length, layers: counts, omitted, truncated, budgetMode: 'total', sceneId: sceneId || '' };
+ }

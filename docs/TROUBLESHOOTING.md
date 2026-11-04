@@ -53,6 +53,13 @@ grep -a "登录服务已断开" /tmp/qq-napcat.log    # 只有 = 二维码自然
 - NapCat 配置是否写到了**生效目录**（不是 `Documents/napcat`）？
 - 改完配置要**重启 QQ** 才生效
 
+## 角色卡分层不生效（只注入核心）
+
+现象：拆了「语气/日常/场景」层，但每轮唤醒只有核心。
+原因：旧版只有一个总预算，核心先占满，后层被丢弃。
+补丁 0005 已改为分层独立预算；可在 `config.json` 的 `role.layerMaxChars` 调整各层上限（0=关闭该层）。
+B站/桌宠同理，分别用 `unified.persona.layerMaxChars` 与内置默认值。
+
 ## 表情/图片工具返回文字标签而不是图片
 
 `socialV2.vision.imageInput` 应为 `"true"`（模型支持看图时）。

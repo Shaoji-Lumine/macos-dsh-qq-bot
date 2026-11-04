@@ -24,11 +24,24 @@
     "napcatWebuiPort": 6099
   },
   "ownerQQ": 0,
-  "admin": { "qq": "", "biliMid": "", "biliName": "", "displayName": "", "gentle": false },
+  "admin": {
+    "qq": "",
+    "biliMid": "",
+    "biliName": "",
+    "displayName": "",
+    "gentle": false
+  },
   "agentPreset": "qq-chat",
   "workspaceTitle": "QQ 聊天",
-  "allow": { "private": [], "groups": [] },
-  "deny": { "users": [], "private": [], "groups": [] },
+  "allow": {
+    "private": [],
+    "groups": []
+  },
+  "deny": {
+    "users": [],
+    "private": [],
+    "groups": []
+  },
   "allowAllWhenEmpty": false,
   "consolePort": 3100,
   "consoleToken": "",
@@ -36,10 +49,23 @@
   "sendDelayMs": 300,
   "questionTimeoutMs": 300000,
   "socialV2": {
-    "vision": { "imageInput": "true" },
-    "sticker": { "enabled": true, "ownerOnly": true, "includeInPrompt": true, "promptMaxStickers": 8 },
-    "voice": { "inboundAsr": true, "enabled": false },
-    "send": { "maxSendPerMinute": 8, "maxSendPerHour": 200 },
+    "vision": {
+      "imageInput": "true"
+    },
+    "sticker": {
+      "enabled": true,
+      "ownerOnly": true,
+      "includeInPrompt": true,
+      "promptMaxStickers": 8
+    },
+    "voice": {
+      "inboundAsr": true,
+      "enabled": false
+    },
+    "send": {
+      "maxSendPerMinute": 8,
+      "maxSendPerHour": 200
+    },
     "tokenGuard": {
       "enabled": true,
       "ownerUnlimited": true,
@@ -51,6 +77,19 @@
       "replyCheckFree": true,
       "maxOutboundPerTurn": 10,
       "maxDailyCostCNY": 10
+    },
+    "prompt": {
+      "antiAi": "",
+      "proactive": ""
+    }
+  },
+  "role": {
+    "maxInjectChars": 6000,
+    "layerMaxChars": {
+      "identity": 600,
+      "tone": 1200,
+      "scene": 800,
+      "daily": 600
     }
   }
 }
