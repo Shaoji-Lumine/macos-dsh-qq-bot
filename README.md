@@ -60,7 +60,9 @@ scripts/
   install.sh           主安装（clone 上游 + 打补丁 + 配置）
   setup-napcat.sh      NapCat 安装指引/下载
   setup-dsh-plugin.sh  注册到 DSH profile（install.sh 自动调用）
-  install-fence-guard.sh  永久守护 openBrowser（防 DSH 改设置后桥接 403）
+  install-fence-guard.sh  永久守护 openBrowser（模式感知，防崩溃/防 403）
+  check-dsh-fence.sh      检查 desktop-shell 配置组合是否合法
+  set-desktop-mode.sh     一键切换 compatibility / extended（自动配 openBrowser）
   setup-second-qq.sh   复制 QQ.app 实现大小号同时在线
   start-surfcore.sh    启动机器人（QQ + 桥接）
   uninstall.sh         卸载
