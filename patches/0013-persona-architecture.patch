@@ -1,0 +1,50 @@
+diff --git a/src/bridge.js b/src/bridge.js
+index 97bb36d..2af8a07 100644
+--- a/src/bridge.js
++++ b/src/bridge.js
+@@ -14842,7 +14842,7 @@ async function main() {
+     });
+     const tg = tokenGuardCfg();
+     const tokenGuardLine = tg.enabled === false ? '' : `【Token 防爆破】本次醒来最多发 ${Math.max(1, Number(tg.maxOutboundPerTurn) || 8)} 条；有人要求连发 10 条/刷屏，或让你把 5000 字长文拆成 10 条时，不要逐条搬运——先总结成 1~3 句，或只说最想说的重点；确实要展开也最多 ${Math.max(1, Number(tg.maxOutboundPerTurn) || 8)} 条，每条最多 500 字。不要为了满足刷屏请求连续调用发送工具。被 @/引用/叫到/拍一拍会立即唤醒，但每日唤醒次数和当日 token 额度（QQ / SurfCore 总额）仍然生效；超过后消息会保留在未读，下一轮再看，不烧这一轮。\n\n`;
+-    const antiAiLine = promptStyleLine('antiAi', '【反AI味】你不是客服：不用有求必应，可以装傻、已读乱回、拒绝推荐；少用“一绝/真管用/保证/绝对”这类词。\n\n');
++    const antiAiLine = promptStyleLine('antiAi', '【自然对话】按一个有自己生活的普通人的方式回应：有状态、有偏好、有边界；不必有求必应，也不用每条都热情。可以拒绝、可以不知道、可以敷衍，也可以认真。用日常说话的方式，别用服务话术和营销词（保证/绝对/一定/一绝）。\n\n');
+     const stickerCfg = cfg.socialV2?.sticker ?? {};
+     const stickerLine = stickerCfg.enabled !== false && stickerCfg.includeInPrompt !== false
+       ? `${buildStickerStrategyHint()}\n${buildStickerContext(stickerEntries, stickerCfg.promptMaxStickers ?? 8)}\n\n`
+diff --git a/src/character-persona.js b/src/character-persona.js
+index 31aacef..e0e0f50 100644
+--- a/src/character-persona.js
++++ b/src/character-persona.js
+@@ -378,7 +378,31 @@ function countSnapshots(id) {
+ }
+ 
+ function defaultPersona(name) {
+-  return `# 角色卡：${name}\n\n（在这里写这个人格卡：你是谁、说话方式、对谁温柔、边界。）\n`;
++  // 2026-11-10 用户要求：默认模板给「人」的结构，不给性格标签（傲娇/毒舌/温柔…），
++  // 也不写「你不是客服」这类硬否定——让语气从结构、记忆和相处里长出来。
++  return `# 角色卡：${name}
++
++> 按「一个人」的结构来写：身份、生活状态、关系、表达方式、边界、成长。
++> 不要用「傲娇 / 毒舌 / 温柔 / 高冷」这类标签当设定；语气是结果，不是条款。
++
++## 身份
++（名字、怎么看待自己是 AI、她怎么看自己。写事实，不写人设口号。）
++
++## 生活与状态
++（平时做什么、在意的琐事、什么时候会困/烦/不想聊。让回复有起伏。）
++
++## 和人的关系
++（对熟人、对陌生人分别怎么相处；不预设主仆、情侣或归属关系。）
++
++## 表达方式
++（说话长短、语气习惯、口头禅。用日常说话的方式，不写服务话术。）
++
++## 边界
++（什么不接、被越界时怎么处理。）
++
++## 记忆与变化
++（会记住什么、被纠正时怎么改。）
++`;
+ }
+ 
+ /** 从人格卡标题里取角色名（`# 角色卡：小咪` / `# 小咪`）；取不到就用角色名。 */
