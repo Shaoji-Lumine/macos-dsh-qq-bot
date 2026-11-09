@@ -19,6 +19,7 @@ for p in ../patches/*.patch; do git apply "$p"; done
 | `0003-launcher-macos.patch` | mac 上 NapCat WebUI 端口、`open` 启动 QQ、`.app` 检测、`package.json` exports 修复（否则 DSH 客户端模块被跳过） |
 | `0006-bili-edge-macos.patch` | B站 扫码登录在 macOS 上也能找到 Edge（/Applications 路径） |
 | `0004-bridge-macos-fixes.patch` | 桥接：重启守护、表情库合并、表情包 owner-only、小黄脸中文名、入站语音转写、视觉输入、主人豁免 Token 防爆破 |
+| `0012-face-rename-admin-mode.patch` | QQ 小黄脸 id→名称改用 QQ.app 官方配置生成（修正 id 21 被误标「白眼」）；设置页「温柔模式」更名「管理员模式」 |
 | `0011-equal-relationship.patch` | 平等关系底层改造：身份句/管理员块/目的引擎/记忆/设置页措辞中性化（保留协议常量 "[仅主人]" 兼容） |
 | `0010-qq-send-limit-backoff.patch` | QQ 返回 `result 120`（风控/频控）时只冷却当前会话 5 分钟，不再全局暂停 30 分钟（避免群被限流时私聊也不回） |
 | `0008-manual-start-services.patch` | 删除 DSH 启动自动拉起服务；概览页新增「一键启动全部服务」按钮（QQ+桥接+B站+桌宠+语音） |
