@@ -1,0 +1,1894 @@
+diff --git a/docs/cases/2026-11-09-equal-relationship.md b/docs/cases/2026-11-09-equal-relationship.md
+new file mode 100644
+index 0000000..691f9a4
+--- /dev/null
++++ b/docs/cases/2026-11-09-equal-relationship.md
+@@ -0,0 +1,64 @@
++# 2026-11-09 关系底层改造：平等相处，不做主仆/情侣
++
++## 1. 现象（用户要求）
++
++用户明确：要和她**平等相待**，不是情侣/主仆；且不要靠写一句「我们是平等的」实现，要从底层改；其他同类地方一起改。
++
++## 2. 根因（底层预设）
++
++| 位置 | 原来的预设 |
++| --- | --- |
++| `persona-identity.js` | 身份句写「**你的主人是 X**」（默认占位「主人」） |
++| `admin-identity.js` | 「主人·温柔模式（优先级高于人格卡）」：**绝不回嘴、先认错、撒娇、乖乖照做、更黏更乖** |
++| `purpose-engine.js` | 目标全是「**跟主人**说说/问问主人/想和主人一起」；连接驱动按「多久没和主人说话」上涨；线索词含「撒娇/想主人/缺爱」 |
++| `bili-memory.js` | 默认称呼「主人」，脱敏替换也写「主人」 |
++| 插件 `index.js` / 设置页 `client.js` / 记忆卡 / 问答标签 / 提示工具 | 大量「主人」称呼与「和主人的初次相遇」等标题 |
++| 人格文案层 | 黏人、思念、撒娇、被冷落闹情绪、叫「笨蛋」等情侣/依赖化设定 |
++
++## 3. 修法
++
++1. **身份句**：`你是X；对方叫Y（没有就说“对方是你认识的人”）。你们是熟人，朋友式相处。` ——不写主人/情侣，也不写「平等」口号。
++2. **管理员块**：只描述**权限事实**（谁能审批/发命令/带【管理员】标记），语气照人格卡；明确「不用讨好、不用撒娇、不用认错」「管理员身份不改变人格与边界」。marker 从【管理员·温柔】改为【管理员】。保留 gentle 开关作为「是否注入权限块」。
++3. **目的机制**：所有「主人」→「对方」；动作文案「跟对方说说/问问对方」；**删除「对方多久没说话 → 连接需求上涨」的依赖驱动**；线索词去掉「撒娇/想主人/缺爱」；关系类目标不再生成「我们算什么关系」，改为近况关心。
++4. **称呼/文案统一**：`bili-memory` 默认「你」，脱敏替换「对方」；记忆卡标题「和对方」；问答来源标签「管理员/非管理员」；设置页「主人」全部改为「你/管理员」；允许列表提示改「管理员」。
++5. **让她知道用户名字**：管理员 `displayName` 写入用户 QQ 昵称，身份句变成「对方叫 非人叙事者」——只作为**事实**，不设定称呼。
++6. 人格文案（core/tone/daily/scenes）另出**平等版**给用户手动粘贴，不自动改动角色卡。
++
++## 4. 影响面
++
++- 注入提示词：身份句、管理员块（仅在 gentle 开启时）、目的机制 prompt、记忆卡标题、问答来源标签。
++- 所有平台（QQ/群/私聊/B站/桌宠）共用。
++- 不碰用户数据、密钥；不改协议常量 `[仅主人]`（避免 preset 不兼容），只改展示文案。
++
++## 5. 验证
++
++```bash
++npm run test:audit          # 138/144（剩余 6 项都是 Windows-only）
++node scripts/test-admin-identity.mjs
++node scripts/test-admin-prompt-wiring.mjs
++node scripts/test-persona-wake-injection.mjs
++node scripts/test-purpose-engine.mjs && node scripts/test-purpose-wiring.mjs
++node scripts/test-memory-card.mjs && node scripts/test-question-answers.mjs
++```
++
++身份句实际输出：`你是雾余；对方叫非人叙事者。你们是熟人，朋友式相处。`
++
++## 6. 回滚
++
++`git revert`；或把 admin `displayName` 清空、恢复旧 persona 文件备份。
++
++## 7. 发布交接块
++
++```
++【2026-11-09 平等关系底层改造】
++现象：用户要求平等相处，不要主仆/情侣框架，不要靠一句口号实现。
++修法：
++- 身份句去掉「主人」→「对方叫X，熟人/朋友式相处」
++- 管理员块去掉「绝不回嘴/撒娇/乖乖照做/更黏更乖」，只留权限说明
++- 目的机制：主人→对方；删除「多久没说话→连接需求上涨」；去掉撒娇/想主人/缺爱线索
++- bili-memory/记忆卡/问答标签/设置页 UI 全部中性化
++- displayName 写入用户昵称（仅作为事实，不设定称呼）
++验证：npm run test:audit 138/144（6 项 Windows-only）
++影响：QQ 桥接重启生效；B站/桌宠需重启 DSH
++回滚：git revert
++```
+diff --git a/plugins/surfcore/lib/client.js b/plugins/surfcore/lib/client.js
+index 24367fc..a760f40 100644
+--- a/plugins/surfcore/lib/client.js
++++ b/plugins/surfcore/lib/client.js
+@@ -621,7 +621,7 @@ select.qbw-select option{background:var(--qbw-surface);color:var(--qbw-text)}
+     // 为什么放在最上面：用户要求管理员的 QQ 号与 B站 UID 默认是同一个人，
+     // 这是比「鱼群保护 / 作息」更基础的身份设置。两个标签页改的是同一个
+     // unified.admin，保存时由宿主投影到 qq.ownerQQ 与 bili.owner.mid。
+-    // 主人特权操作审计：只读桥接写好的 state/owner-audit.jsonl。
++    // 管理员操作审计：只读桥接写好的 state/owner-audit.jsonl。
+     function AuditModal({ onClose, toast }) {
+       const [data, setData] = useState(null);
+       const [err, setErr] = useState("");
+@@ -654,7 +654,7 @@ select.qbw-select option{background:var(--qbw-surface);color:var(--qbw-text)}
+               entries.slice().reverse().map((e, i) => h("div", { key: i, style: { borderBottom: "1px solid rgba(127,127,127,.18)", padding: "5px 0" } },
+                 h("div", null, h("b", null, e.event || "?"), " · ", new Date(e.at).toLocaleString("zh-CN", { hour12: false })),
+                 h("div", { style: { opacity: 0.8 } },
+-                  `操作者：${e.actor?.isOwner ? "主人" : "群友"} ${mask(e.actor?.id)} · 授权：${e.auth?.rule || "—"}/${e.auth?.decision || "—"} · 结果：${e.result?.ok ? "成功" : (e.result?.errorCode || "失败")}`),
++                  `操作者：${e.actor?.isOwner ? "管理员" : "群友"} ${mask(e.actor?.id)} · 授权：${e.auth?.rule || "—"}/${e.auth?.decision || "—"} · 结果：${e.result?.ok ? "成功" : (e.result?.errorCode || "失败")}`),
+                 e.ref?.session ? h("div", { style: { opacity: 0.55 } }, `关联：${e.ref.session}${e.ref.role ? " · " + e.ref.role : ""}`) : null)))
+             : h("p", { className: "qbw-hint" }, "还没有记录。"),
+           h("div", { className: "qbw-actions" },
+@@ -1161,7 +1161,7 @@ F("sessionCwd", "会话工作目录", "留空用 surfcore 根目录", "text", {
+       ]},
+       { group: "鱼群保护（QQ）", note: "多个同类角色同群时自动少说；只影响群聊自动参与，私聊/管理员不受影响；保存后重启 QQ 桥接生效", fields: [
+         F("fishGuard.enabled", "启用 QQ 鱼群保护", "关掉 = 永远按原逻辑参与", "switch"),
+-        F("socialV2.ignoreSpamCommands", "忽略 # 刷屏指令", "默认开；非主人发的 #sl 这类短指令不唤醒/不回复；@/引用/主人不受影响", "switch"),
++        F("socialV2.ignoreSpamCommands", "忽略 # 刷屏指令", "默认开；非管理员发的 #sl 这类短指令不唤醒/不回复；@/引用/管理员不受影响", "switch"),
+         F("fishGuard.windowMs", "统计窗口（ms）", "默认 600000（10 分钟）", "number", { min: 60000 }),
+         F("fishGuard.cooldownMs", "触发后冷却（ms）", "默认 600000；冷却内只回直接叫它的人", "number", { min: 60000 }),
+         F("fishGuard.maxFish", "多少条不同的鱼算泛滥", "默认 5（不同发送者）", "number", { min: 2, max: 20 }),
+@@ -1350,7 +1350,7 @@ F("sessionCwd", "会话工作目录", "留空用 surfcore 根目录", "text", {
+     ];
+ 
+     const BILI_FIELDS = [
+-      { group: "她自己（只读）", note: "管理员（主人）的 QQ 与 B站 mid 在标签页顶部统一设置 →", fields: [
++      { group: "她自己（只读）", note: "你的 QQ 与 B站 mid 在标签页顶部统一设置 →", fields: [
+         // owner.mid / owner.name 不在这里：已上移到「管理员」卡片，和 QQ 号一起保存。
+         F("self.mid", "她自己 mid", "只读（来自 cookie / nav）", "text", { readOnly: true }),
+         F("self.name", "她自己昵称", "只读（来自 nav）", "text", { readOnly: true }),
+@@ -1411,7 +1411,7 @@ F("sessionCwd", "会话工作目录", "留空用 surfcore 根目录", "text", {
+         F("fishGuard.nameSuffixes", "鱼名结尾词", "逗号分隔；默认 肥鱼,fish,鱼（最后一个字是鱼也算；接受极小概率误伤真人）", "list"),
+         F("fishGuard.extraFishMids", "额外认定的鱼 mid", "逗号分隔；改名了也能认出来（B站 mid）", "list"),
+         F("fishGuard.exemptNames", "豁免昵称", "逗号分隔", "list"),
+-        F("fishGuard.exemptMids", "豁免 mid", "逗号分隔；主人/自己会被代码强制排除", "list"),
++        F("fishGuard.exemptMids", "豁免 mid", "逗号分隔；你/自己会被代码强制排除", "list"),
+       ]},
+       { group: "鱼群保护（B站）", note: "评论区鱼太多就不发新楼层；优先回鱼；给鱼点赞（只拦她自己决定的发言，下一轮醒来生效）", fields: [
+         F("fishGuard.enabled", "启用 B站鱼群保护", "关掉 = 永远发新楼层", "switch"),
+@@ -1449,10 +1449,10 @@ F("sessionCwd", "会话工作目录", "留空用 surfcore 根目录", "text", {
+         F("listen.oncePerPerson", "同一个人最多回一条", "30 天内只回一次", "switch"),
+         F("listen.allDay", "全天监听", "关掉 = 只在她醒着的窗口里回", "switch"),
+         F("listen.dm", "私信监听", "有私信就叫醒她", "switch"),
+-        F("listen.dmScope", "私信监听范围", "只认主人 / 谁找她都回", "select", { options: [["owner", "只认主人"], ["all", "谁找她都回"]] }),
++        F("listen.dmScope", "私信监听范围", "只认你 / 谁找她都回", "select", { options: [["owner", "只认你"], ["all", "谁找她都回"]] }),
+         F("listen.live", "直播间监听", "", "switch"),
+         F("listen.liveRoom", "直播间房间号", "留空 = 不蹲直播"),
+-        F("listen.liveScope", "直播间只回", "只回主人 / 只回艾特她的", "select", { options: [["owner", "只回主人"], ["mention", "只回艾特她的"]] }),
++        F("listen.liveScope", "直播间只回", "只回你 / 只回艾特她的", "select", { options: [["owner", "只回你"], ["mention", "只回艾特她的"]] }),
+       ]},
+       { group: "日记与推送", fields: [
+         F("diary.push", "推送日记摘要", "日记照写；只控制推不推", "switch"),
+@@ -2584,7 +2584,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
+           `规则：窗口 ${Math.round((data.config.windowMs || 0) / 60000)} 分钟 · 冷却 ${Math.round((data.config.cooldownMs || 0) / 60000)} 分钟 · 不同鱼 ≥${data.config.maxFish} · 连续 ${data.config.maxConsecutiveFish} 条 · 单鱼 ${data.config.singleFishMaxConsecutive} 条`) : null);
+     }
+ 
+-    // ── 目的机制（主动找主人）：独立栏目「目的」里的设置与状态 ──────────────
++    // ── 目的机制（主动搭话）：独立栏目「目的」里的设置与状态 ──────────────
+     // 载体（QQ / 桌宠）由 PurposeCarrierCard 选择；这里只做节奏、素材、预览与试一次。
+     // 状态/预览/出发都走 /purpose/*：插件按当前载体路由到桥接或桌宠。
+     function PurposeCard({ cfg, set, busy, setBusy, toast, carrier }) {
+@@ -2708,7 +2708,7 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
+       return h("div", { className: "qbw-card", style: { marginBottom: "10px" } },
+         h("div", { style: { display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "flex-start", flexWrap: "wrap" } },
+           h("div", null,
+-            h("h4", { style: { margin: 0 } }, "主动找主人 · 目的机制",
++            h("h4", { style: { margin: 0 } }, "主动搭话 · 目的机制",
+               status ? h("span", { className: "qbw-badge " + (status.enabled ? "ok" : "warn") }, status.enabled ? "开" : "关") : null,
+               status?.carrier ? h("span", { className: "qbw-badge" }, status.carrier === "pet" ? "载体：桌宠" : "载体：QQ") : null,
+               status?.focus ? h("span", { className: "qbw-badge warn" }, "专注中 · 自动停") : null),
+@@ -3379,7 +3379,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+         }),
+         // 目的机制已独立成「目的」栏目；QQ 页只留一张指路卡，避免两处各改一半。
+         h("div", { className: "qbw-card", style: { marginBottom: "10px" } },
+-          h("h4", null, "主动找主人 · 目的机制"),
++          h("h4", null, "主动搭话 · 目的机制"),
+           h("p", null, "已独立成「目的」栏目：可选载体（桌宠 / QQ）、主动搭话形式、节奏、素材、预览与试一次。",
+             "目的状态和 QQ / B站 / 记忆共用当前角色；载体切到桌宠后不会同时私聊你。"),
+           h("div", { className: "qbw-actions", style: { borderTop: "none", marginTop: "6px", paddingTop: "0" } },
+@@ -3392,7 +3392,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+             readOnly: (f) => f.readOnly || (f.path.join(".") === "self.mid") || (f.path.join(".") === "self.name"),
+             onSave,
+             categories: QQ_ADV_CATEGORIES,
+-            groupExtra: (g) => g.group === "连接与身份" ? h(Row, { label: "运行模式", hint: "chat=普通安全聊天；reserved=一代仿真；reserved2=二代工具仿真；closed-agent=仅主人私聊全工具。只运行当前模式，其他模式配置不生效" },
++            groupExtra: (g) => g.group === "连接与身份" ? h(Row, { label: "运行模式", hint: "chat=普通安全聊天；reserved=一代仿真；reserved2=二代工具仿真；closed-agent=仅管理员私聊全工具。只运行当前模式，其他模式配置不生效" },
+               h("select", { className: "qbw-select", value: overview?.mode?.effective ?? "reserved2", onChange: async (e) => {
+                 try { await api("/mode", { method: "POST", body: { mode: e.target.value } }); toast(`✓ 模式已切到 ${e.target.value}`); await reload(); } catch (err) { toast(`✗ ${err.message}`); }
+               } },
+@@ -3741,9 +3741,9 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+           `共 ${data.total ?? items.length} 条${q ? `（过滤后 ${items.length} 条）` : ""} · 数据文件 ${data.file || "—"}`) : null);
+     }
+ 
+-    // ── B站 扫码登录（鱼 / 主人）────────────────────────────────────────────
++    // ── B站 扫码登录（小肥鱼 / 你的账号）────────────────────────────────────────────
+     // 用宿主启动 Edge headless 打开官方登录页，把页面里的二维码取出来显示给用户；
+-    // 扫码成功后宿主只保存 cookie（鱼写 credentials.json，主人写 owner-credentials.json），
++    // 扫码成功后宿主只保存 cookie（小肥鱼写 credentials.json，你的账号写 owner-credentials.json），
+     // 客户端永远拿不到 cookie，只拿到 mid/昵称。
+     function BiliQrModal({ target = "owner", onClose, onConfirmed }) {
+       const [state, setState] = useState({ phase: "starting" });
+@@ -3816,7 +3816,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+         onClose?.();
+       };
+ 
+-      const title = target === "fish" ? "扫码绑定小肥鱼的 B站 账号" : "扫码登录主人的 B站 账号";
++      const title = target === "fish" ? "扫码绑定小肥鱼的 B站 账号" : "扫码登录你的 B站 账号";
+       const live = state.phase === "waiting" || state.phase === "scanned";
+       return h("div", { className: "qbw-modal-backdrop", onClick: (e) => { if (e.target === e.currentTarget) close(); } },
+         h("div", { className: "qbw-modal", style: { maxWidth: "430px" } },
+@@ -3831,12 +3831,12 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+               state.phase === "scanned" ? "已扫码，请在手机上确认登录" : "打开 B站 App → 扫一扫 → 确认登录"),
+             h("p", { className: "qbw-hint", style: { textAlign: "center" } },
+               target === "owner"
+-                ? "只保存 cookie 用来读取偏好；不会用主人号发评论/动态。"
++                ? "只保存 cookie 用来读取偏好；不会用你的号发评论/动态。"
+                 : "绑定后她会用这个号看视频、评论、发动态。"),
+-            state.expected?.mid ? h("p", { className: "qbw-hint", style: { textAlign: "center" } }, `期望账号：${state.expected.name || (target === "fish" ? "小肥鱼" : "主人")}（${state.expected.mid}）；扫错号会被拒绝。`) : null,
++            state.expected?.mid ? h("p", { className: "qbw-hint", style: { textAlign: "center" } }, `期望账号：${state.expected.name || (target === "fish" ? "小肥鱼" : "你的账号")}（${state.expected.mid}）；扫错号会被拒绝。`) : null,
+             target === "fish" ? h("label", { className: "qbw-hint", style: { display: "flex", gap: "6px", alignItems: "center", justifyContent: "center", marginTop: "8px" } },
+               h("input", { type: "checkbox", checked: allowSameAsOwner, onChange: (e) => setAllowSameAsOwner(e.target.checked) }),
+-              "我只有一个 B站 号（主人=小肥鱼），允许用主人号当小肥鱼") : null) : null,
++              "我只有一个 B站 号（你的号=小肥鱼），允许用你的号当小肥鱼") : null) : null,
+           state.phase === "confirmed" ? h("div", null,
+             h("p", { style: { textAlign: "center", fontSize: "15px", color: "var(--qbw-ok-text)", fontWeight: 600 } }, "✅ 登录成功"),
+             h("p", { style: { textAlign: "center" } },
+@@ -3849,7 +3849,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+             h("p", { className: "qbw-hint" }, "建议：点下面「重新生成」；如果一直过期，确认手机 B站 App 能正常扫码。")) : null,
+           state.phase === "wrong" ? h("div", null,
+             h("p", { className: "qbw-err" }, `✗ ${state.error || "扫错账号"}`),
+-            h("p", { className: "qbw-hint" }, "扫错号不会保存。要点：① 想用主人同一个号 → 勾下方「我只有一个 B站 号」再扫；② 想换到别的号 → 点下面「换号（清除旧凭据）」再扫。"),
++            h("p", { className: "qbw-hint" }, "扫错号不会保存。要点：① 想用自己的号 → 勾下方「我只有一个 B站 号」再扫；② 想换到别的号 → 点下面「换号（清除旧凭据）」再扫。"),
+             h("p", { className: "qbw-hint" }, state.hint || "")) : null,
+           state.phase === "error" ? h("div", null,
+             h("p", { className: "qbw-err" }, `✗ ${state.error || "扫码失败"}`),
+@@ -3917,10 +3917,10 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+         try {
+           const result = await api(`/preferences/scan?sources=history,favorites,local&limit=24&target=${target}`);
+           if (result?.ok === false) throw new Error(result.error || "扫描失败");
+-          // 旧宿主不认 target 会直接按鱼扫；不能把鱼的结果冒充主人，宁可让用户重载插件。
++          // 旧宿主不认 target 会直接按鱼扫；不能把鱼的结果冒充你的账号，宁可让用户重载插件。
+           if (target !== "fish" && result.target !== target) {
+             setScan(null);
+-            setScanErr("宿主插件还是旧代码（不认「抓取主人/两者」）：重启 DSH 或重载 surfcore 后再抓。");
++            setScanErr("宿主插件还是旧代码（不认「抓取你的账号/两者」）：重启 DSH 或重载 surfcore 后再抓。");
+             return;
+           }
+           if (result.ownerLoginRequired) { setScan(null); setQrTarget("owner"); return; }
+@@ -3998,20 +3998,20 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+           h("input", { className: "qbw-input", placeholder: "新关键词（如：猫咪 / 异环 / 手书）", value: newWord, onChange: (e) => setNewWord(e.target.value), onKeyDown: (e) => { if (e.key === "Enter") addWord(); } }),
+           h(Btn, { kind: "qbw-btn2", onClick: addWord, disabled: !newWord.trim() }, "+ 加到爱看"),
+           h("select", { className: "qbw-select", value: target, onChange: (e) => setTarget(e.target.value), title: "抓谁的口味" },
+-            h("option", { value: "owner" }, "抓取主人"),
++            h("option", { value: "owner" }, "抓取你的账号"),
+             h("option", { value: "fish" }, "抓取小肥鱼"),
+             h("option", { value: "both" }, "两者都抓")),
+           h(Btn, { onClick: runScan, disabled: scanning }, scanning ? "抓取中…" : "一键抓取我的偏好")),
+         accounts ? h("div", { className: "qbw-hint", style: { marginTop: "4px" } },
+-          "主人账号：", accounts.owner?.configured ? `${accounts.owner.name || "（未取到昵称）"}（${accounts.owner.mid}）已扫码登录` : "未登录（点抓取会弹二维码）",
++          "你的账号：", accounts.owner?.configured ? `${accounts.owner.name || "（未取到昵称）"}（${accounts.owner.mid}）已扫码登录` : "未登录（点抓取会弹二维码）",
+           " · 小肥鱼：", accounts.fish?.configured ? `${accounts.fish.name || "（未取到昵称）"}（${accounts.fish.mid}）已绑定` : "未绑定（B站 页可扫码）") : null,
+         h("div", { className: "qbw-hint", style: { marginTop: "4px" } },
+           "抓取是只读的：读当前选中账号的观看历史 / 收藏夹 + 本地观看记录；不读浏览器登录的账号、不读 QQ 聊天、不点赞、不改账号。",
+-          "抓主人需要先用主人的 B站 App 扫二维码；扫错号会被拒绝。"),
++          "抓你的账号需要先用你的 B站 App 扫二维码；扫错号会被拒绝。"),
+         scanErr ? h("div", { className: "qbw-err", style: { marginTop: "6px" } }, `✗ ${scanErr}`) : null,
+         scan ? h("div", { style: { marginTop: "8px" } },
+           (scan.accounts ?? []).length ? h("div", { className: "qbw-hint" },
+-            `抓取账号：${(scan.accounts ?? []).map((item) => `${item.role === "owner" ? "主人" : "小肥鱼"} ${item.name || item.mid}（${item.mid}）`).join(" · ")}`) : null,
++            `抓取账号：${(scan.accounts ?? []).map((item) => `${item.role === "owner" ? "你的账号" : "小肥鱼"} ${item.name || item.mid}（${item.mid}）`).join(" · ")}`) : null,
+           h("div", { className: "qbw-hint" }, `来源：${(scan.sources ?? []).map((item) => `${item.ok ? "✓" : "✗"} ${item.name}${item.items != null ? `（${item.items}）` : ""}${item.error ? ` ${item.error}` : ""}`).join(" · ")}`),
+           candidates.length ? h("div", { className: "qbw-chips" }, candidates.map((item) => {
+             const already = exists(item.keyword);
+@@ -4051,7 +4051,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+         try {
+           const r = await api("/bili/account/verify", { method: "POST", body: { target } });
+           setAccountCheck((s) => ({ ...s, [target]: r }));
+-          if (r.ok) toast(`✓ ${target === "owner" ? "主人" : "小肥鱼"} 登录有效：${r.account?.name}（${r.account?.mid}）`);
++          if (r.ok) toast(`✓ ${target === "owner" ? "你的账号" : "小肥鱼"} 登录有效：${r.account?.name}（${r.account?.mid}）`);
+           else toast(`✗ 核查失败：${r.error || "原因不明"}`);
+           await loadAccounts();
+         } catch (e) {
+@@ -4079,7 +4079,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+         h("h4", null, "B站 登录账号"),
+         h("div", { className: "qbw-hint", style: { marginTop: "2px" } },
+           "显示扫码登录的账号；「核查」会读凭据文件再问一次 B站，确认登录还有效、mid 没串。"),
+-        [["fish", "小肥鱼"], ["owner", "主人"]].map(([target, label]) => {
++        [["fish", "小肥鱼"], ["owner", "你的账号"]].map(([target, label]) => {
+           const acc = target === "owner" ? accounts?.owner : accounts?.fish;
+           const chk = accountCheck[target] || {};
+           return h("div", { key: target, style: { marginTop: "8px", padding: "8px 10px", border: "1px solid rgba(127,127,127,.2)", borderRadius: "8px" } },
+@@ -4330,7 +4330,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+           h("div", { style: { fontWeight: 700, marginBottom: "4px" } }, "人格卡：一页编辑，不再分栏"),
+           "四层都在这一页，保存一次全部写入；拆分只生成草稿，不会自动覆盖你的卡。",
+           h("div", { className: "qbw-hint", style: { marginTop: "4px" } },
+-            h("b", null, "身份底座自动带："), "无论 tone / full / 日常，系统都会先带一行「你是谁、主人是谁」；身份不需要只写在核心里。")),
++            h("b", null, "身份底座自动带："), "无论 tone / full / 日常，系统都会先带一行「你是谁、对方是谁」；身份不需要只写在核心里。")),
+         h("div", { className: "qbw-hint", style: { margin: "6px 0" } },
+           "写法：", h("b", null, "核心"), " 写“我是谁/价值观/底线”；", h("b", null, "语气"), " 只写口癖、句子长短、称呼、标点；", h("b", null, "日常"), " 写近期心情/习惯；", h("b", null, "场景"), " 写平台差异。"),
+         h("div", { className: "qbw-actions", style: { marginBottom: "6px" } },
+@@ -4341,7 +4341,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+         err ? h("div", { className: "qbw-err", style: { marginBottom: "6px" } }, err) : null,
+         box("core", "人格核心", "身份、价值观、底线。不是每次群聊都加载；但身份底座会单独带。"),
+         box("tone", "人格语气", "口癖、句子长短、称呼、标点、语气词。日常群聊默认只加载语气层。"),
+-        box("daily", "人格日常", "近期状态、习惯、心情。保存时自动写入「你是谁、主人是谁」；拆分也会多留一份在日层层。"),
++        box("daily", "人格日常", "近期状态、习惯、心情。保存时自动写入「你是谁、对方是谁」；拆分也会多留一份在日层层。"),
+         h("div", { className: "qbw-group", style: { marginTop: "6px" } }, "场景人格", h("small", null, "平台差异；没有就留空")),
+         h("div", { className: "qbw-actions", style: { marginTop: "2px", paddingTop: "2px" } },
+           ...Object.entries(sceneLabels).map(([id, label]) => h(Btn, {
+@@ -4436,23 +4436,23 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+       const pin = (record) => act("pin", { id: record.id, pinned: !record.pinned });
+       const forget = (record) => {
+         const extra = record.firstMet
+-          ? "\n这是初次相遇记录；删除后会自动选下一条最早的主人互动。全量卡仍保留副本。"
++          ? "\n这是初次相遇记录；删除后会自动选下一条最早的互动。全量卡仍保留副本。"
+           : "";
+         if (!confirm(`确定忘掉「${record.title || record.text.slice(0, 20)}」？这是不可逆的（会先备份整张卡）。${extra}`)) return;
+         act("forget", { id: record.id });
+       };
+       const toggleSelect = (id) => setSelected((list) => list.includes(id) ? list.filter((item) => item !== id) : [...list, id]);
+       const setFirstMeet = async () => {
+-        if (!selected.length) { toast("✗ 先勾选至少一条和主人的互动"); return; }
++        if (!selected.length) { toast("✗ 先勾选至少一条和你的互动"); return; }
+         const msg = selected.length > 1
+-          ? `把选中的 ${selected.length} 条合并成一个「和主人的初次相遇」事件？原记录会从衰减卡移除，但全量卡已保留。`
+-          : "把这条设为和主人的初次相遇？";
++          ? `把选中的 ${selected.length} 条合并成一个「和你的初次相遇」事件？原记录会从衰减卡移除，但全量卡已保留。`
++          : "把这条设为和你的初次相遇？";
+         if (!confirm(msg)) return;
+         await act("set-first-meet", { ids: selected });
+         setSelected([]);
+       };
+       const clearFirstMeet = async () => {
+-        if (!confirm("取消手动指定的初次相遇，恢复为“最早一条主人互动”？")) return;
++        if (!confirm("取消手动指定的初次相遇，恢复为“最早一条你的互动”？")) return;
+         await act("clear-first-meet");
+         setSelected([]);
+       };
+@@ -4511,7 +4511,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+             h("b", null, status.unlimited ? `记忆卡到警告值的 ${status.percent}% 了。` : `容量到 ${status.percent}% 了。`),
+             status.unlimited
+               ? "已设为不限制字数，不会自动压缩或删除；建议手动整理，或把上限/警告值调低。"
+-              : "建议压缩：会先把最不重要的旧记忆模糊化，置顶的、和主人相关的重要记忆不会动。",
++              : "建议压缩：会先把最不重要的旧记忆模糊化，置顶的、和你相关的重要记忆不会动。",
+             !status.unlimited && level >= 3 ? "（已满 100%，新记忆会自动压缩，但仍建议检查。）" : "") : null,
+           h("div", { className: "qbw-hint" },
+             `最近整理：${fmtTime(status.lastMaintenanceAt)} · 上次每日遗忘：${status.lastDecayDate || "还没跑"} · 注入预算 QQ ${config.injectMaxChars?.qq ?? 0} / B站 ${config.injectMaxChars?.bili ?? 0} 字`),
+@@ -4543,7 +4543,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+         manual.open ? h("div", { className: "qbw-card" },
+           h("h4", null, "手动记一条"),
+           h("div", { className: "qbw-hint" }, "自动记忆之外，你（管理员）可以直接写一条；scope=QQ 的不会进 B站 提示词。"),
+-          h("textarea", { className: "qbw-textarea", style: { marginTop: "8px" }, value: manual.text, onChange: (e) => setManual((m) => ({ ...m, text: e.target.value })), placeholder: "例：2026-10-22 主人说周末带我去看海。" }),
++          h("textarea", { className: "qbw-textarea", style: { marginTop: "8px" }, value: manual.text, onChange: (e) => setManual((m) => ({ ...m, text: e.target.value })), placeholder: "例：2026-10-22 对方说周末去看海。" }),
+           h("div", { className: "qbw-actions" },
+             h("label", { className: "qbw-hint" }, "重要度 ",
+               h("input", { className: "qbw-input", type: "number", min: 1, max: 100, value: manual.importance, onChange: (e) => setManual((m) => ({ ...m, importance: Number(e.target.value) })), style: { width: "90px", minWidth: "90px" } })),
+@@ -4596,7 +4596,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+             h("input", { className: "qbw-input", type: "number", min: 1, max: 60, value: config.recentDays ?? 7, onChange: (e) => setConfig("recentDays", Number(e.target.value)) })),
+           h(Row, { label: "多少天后开始模糊", hint: "新记忆的保护期；到期后每天降一档" },
+             h("input", { className: "qbw-input", type: "number", min: 0, max: 60, value: config.fuzzyAfterDays ?? 7, onChange: (e) => setConfig("fuzzyAfterDays", Number(e.target.value)) })),
+-          h(Row, { label: "多少天后可以遗忘", hint: "只对「不重要且非主人」的记忆生效" },
++          h(Row, { label: "多少天后可以遗忘", hint: "只对「不重要且非你」的记忆生效" },
+             h("input", { className: "qbw-input", type: "number", min: 7, max: 365, value: config.forgetAfterDays ?? 60, onChange: (e) => setConfig("forgetAfterDays", Number(e.target.value)) })),
+           h(Row, { label: "每日整理时间（点）", hint: "到点后第一次 tick 执行；本地时间" },
+             h("input", { className: "qbw-input", type: "number", min: 0, max: 23, value: config.dailyHour ?? 4, onChange: (e) => setConfig("dailyHour", Number(e.target.value)) })),
+@@ -4609,14 +4609,14 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+         h(Section, { title: "最近记忆", note: `${data.records?.length ?? 0} 条（按重要度）`, collapsible: false },
+           h("div", { className: "qbw-infobox" },
+             h("b", null, "初次相遇："),
+-            data.firstMet?.source === "manual" ? "手动指定" : "自动（最早一条主人互动）",
++            data.firstMet?.source === "manual" ? "手动指定" : "自动（最早一条你的互动）",
+             data.firstMet?.at ? ` · ${fmtDate(data.firstMet.at)}` : "",
+             data.firstMet?.mergedCount > 1 ? ` · 由 ${data.firstMet.mergedCount} 条合并` : "",
+             h("div", { className: "qbw-hint", style: { marginTop: "4px" } },
+-              data.firstMet?.preview || "（还没有主人互动；有了以后会自动把最早一条标为初次相遇）")),
++              data.firstMet?.preview || "（还没有你的互动；有了以后会自动把最早一条标为初次相遇）")),
+           h("div", { className: "qbw-search" },
+             h("span", { className: "qbw-label" }, "多选操作"),
+-            h("span", { className: "qbw-hint" }, `已选 ${selected.length} 条${selectedHasNonOwner ? "（含非主人记忆）" : ""}；多选会合并为一个事件；初次相遇只能选主人的互动`),
++            h("span", { className: "qbw-hint" }, `已选 ${selected.length} 条${selectedHasNonOwner ? "（含非你的记忆）" : ""}；多选会合并为一个事件；初次相遇只能选你的互动`),
+             h(Btn, { onClick: setFirstMeet, disabled: !!busy || !selected.length || selectedHasNonOwner }, "设为初次相遇"),
+             h(Btn, { onClick: mergeSelected, disabled: !!busy || selected.length < 2 }, "合并为一个事件"),
+             data.firstMet?.source === "manual" ? h(Btn, { kind: "qbw-btn2", onClick: clearFirstMeet, disabled: !!busy }, "恢复自动") : null),
+@@ -4631,14 +4631,14 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+               "合并后置顶"),
+             h("span", { className: "qbw-hint" }, "合并会移除原记录（全量卡已保留），只留一个事件；可稍后取消置顶")),
+           h("div", { className: "qbw-hint", style: { marginBottom: "6px" } },
+-            `「最初」是独立判定：只算和主人的互动，从首次互动起 30 天窗口；前 10 天最容易被标为最初，之后逐渐降低。当前标记 ${status.counts?.initial ?? 0} 条。`),
++            `「最初」是独立判定：只算和你的互动，从首次互动起 30 天窗口；前 10 天最容易被标为最初，之后逐渐降低。当前标记 ${status.counts?.initial ?? 0} 条。`),
+           (data.records ?? []).slice(0, 30).map((record) => h("div", { key: record.id, className: "qbw-rec" },
+             h("div", null,
+               h("div", { className: "qbw-rec-title" },
+                 h("input", {
+                   type: "checkbox", checked: selected.includes(record.id),
+                   onChange: () => toggleSelect(record.id),
+-                  title: "选中后可合并为一个事件；初次相遇只能选主人的互动",
++                  title: "选中后可合并为一个事件；初次相遇只能选你的互动",
+                   style: { verticalAlign: "middle", marginRight: "6px" },
+                 }),
+                 h("span", { className: "qbw-chip " + (record.clarity === "vivid" ? "on" : record.clarity === "fuzzy" ? "warn" : record.clarity === "trace" ? "bad" : "") }, clarityLabel[record.clarity] ?? record.clarity),
+@@ -5415,7 +5415,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+           h("div", { style: { display: "flex", gap: "10px", alignItems: "center", marginTop: "8px", flexWrap: "wrap", fontSize: "13px" } },
+             "允许谁触发",
+             h("select", { value: rules.triggerWho, onChange: (e) => setRules({ ...rules, triggerWho: e.target.value }), style: { width: "180px" } },
+-              h("option", { value: "owner" }, "仅主人（推荐）"),
++              h("option", { value: "owner" }, "仅管理员（推荐）"),
+               h("option", { value: "anyone" }, "任何人"),
+               h("option", { value: "list" }, "指定成员"))),
+           h("div", { style: { display: "flex", gap: "10px", alignItems: "center", marginTop: "8px", flexWrap: "wrap", fontSize: "13px" } },
+@@ -5427,7 +5427,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+             "允许 AI 主动发语音（默认关；关着只有你手动试发才出声）"),
+           h("div", { style: { marginTop: "8px" } }, h(Btn, { onClick: saveRules }, "保存触发规则")),
+           h("div", { style: { fontSize: "12px", opacity: 0.7, marginTop: "6px" } },
+-            "仅主人可触发：群聊里最后一条消息必须是你发的（5 分钟内），且一条消息最多换一条语音。")) : null);
++            "仅管理员可触发：群聊里最后一条消息必须是你发的（5 分钟内），且一条消息最多换一条语音。")) : null);
+     }
+ 
+     function MemoryTab({ qq, unified, setUnified, overview, busy, setBusy, toast, reload }) {
+@@ -5944,7 +5944,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+           flow.phase === "form" ? h("div", null,
+             h("div", { className: "qbw-hint", style: { marginBottom: "8px" } },
+               flow.snow?.online ? `已连上 SnowLuma：${flow.snow.nickname || ""}（${flow.snow.uin || "?"}）` : `没连上 SnowLuma：${flow.error || "先启动并扫码登录"}`),
+-            h("div", { className: "qbw-group" }, "主人 QQ（你的号，不是机器人号）"),
++            h("div", { className: "qbw-group" }, "你的 QQ（不是机器人号）"),
+             h("input", { className: "qbw-input", value: flow.owner, onChange: (e) => setFlow({ ...flow, owner: e.target.value }), style: { width: "100%" } }),
+             h("div", { className: "qbw-group", style: { marginTop: "10px" } }, `把哪些群加进白名单（${flow.groups.length} 个）`),
+             flow.groups.length === 0
+@@ -6869,7 +6869,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+             h("p", null, `记忆卡已经用到 ${memoryAlert.percent ?? 0}%（${memoryAlert.chars ?? 0}/${memoryAlert.maxChars ?? 0} 字）。`),
+             h("div", { className: "qbw-meter " + ((memoryAlert.level ?? 0) >= 2 ? "bad" : "warn") },
+               h("i", { style: { width: `${Math.min(100, Number(memoryAlert.percent) || 0)}%` } })),
+-            h("p", null, "继续增长会挤掉提示词预算。压缩只会把最不重要的旧记忆先变模糊，置顶的、和主人相关的重要记忆不会动。"),
++            h("p", null, "继续增长会挤掉提示词预算。压缩只会把最不重要的旧记忆先变模糊，置顶的、和你相关的重要记忆不会动。"),
+             h("div", { className: "qbw-actions" },
+               h(Btn, { onClick: compressMemoryCardNow, disabled: !!busy }, busy === "mc-alert" ? "压缩中…" : "立即压缩到 80%"),
+               h(Btn, { kind: "qbw-btn2", onClick: () => { setTab("memory"); setMemoryAlert(null); } }, "去记忆页看看"),
+diff --git a/plugins/surfcore/lib/index.js b/plugins/surfcore/lib/index.js
+index 9614ca1..0e60249 100644
+--- a/plugins/surfcore/lib/index.js
++++ b/plugins/surfcore/lib/index.js
+@@ -1204,16 +1204,17 @@ export function apply(ctx) {
+       const qq = readQqConfig();
+       admin = adminSummary(unified?.config?.admin ?? qq?.config?.admin);
+     } catch {}
+-    const owner = String(admin?.displayName || '').trim() || '主人';
+-    return `你是${name}；你的主人是${owner}。`;
++    const owner = String(admin?.displayName || '').trim();
++    const other = owner ? `对方叫${owner}` : '对方是你认识的人';
++    return `你是${name}；${other}。你们是熟人，朋友式相处。`;
+   }
+ 
+   function withDailyIdentity(text, identity = personaIdentityLine()) {
+     const body = String(text ?? '').trim();
+     if (!body) return identity;
+     if (body.includes(identity)) return body;
+-    // 已有明确“我是谁/主人是谁”的旧日常也保留，不重复堆。
+-    if (/你是|我是/.test(body) && /主人/.test(body)) return body;
++    // 已有明确“我是谁/对方是谁”的旧日常也保留，不重复堆。
++    if (/你是|我是/.test(body) && /对方|主人/.test(body)) return body;
+     return `${identity}
+ 
+ ${body}`;
+@@ -1668,17 +1669,17 @@ ${body}`;
+         }
+       } catch (error) { done(snowStep, false, String(error?.message ?? error)); }
+ 
+-      // 5) 主人 + 白名单
+-      const idStep = installStep('identity', '写入主人 QQ 与白名单');
++      // 5) 你的 QQ + 白名单
++      const idStep = installStep('identity', '写入你的 QQ 与白名单');
+       if (opts.groups.length) {
+-        // 保留用户已有私聊白名单，只追加主人（2026-10-31：以前 [owner] 整体替换会冲掉用户加的人）
++        // 保留用户已有私聊白名单，只追加管理员（2026-10-31：以前 [owner] 整体替换会冲掉用户加的人）
+         const { allow, warnings } = normalizeAllowlist({
+           allow: { ...(readQqConfig().config?.allow ?? {}), groups: opts.groups },
+           ownerQQ: opts.ownerQQ,
+         });
+         saveQqConfig({ allow });
+         for (const w of warnings) pluginLog(`[安装] 白名单：${w.code} ${w.message}`);
+-        done(idStep, true, `${opts.groups.length} 个群${opts.ownerQQ ? ' + 主人私聊' : ''}${warnings.length ? `（${warnings.length} 条修正）` : ''}`);
++        done(idStep, true, `${opts.groups.length} 个群${opts.ownerQQ ? ' + 你的私聊' : ''}${warnings.length ? `（${warnings.length} 条修正）` : ''}`);
+       } else {
+         done(idStep, true, '没选群，跳过（之后在设置 → QQ → 白名单里加）');
+       }
+@@ -1851,7 +1852,7 @@ ${body}`;
+           }
+         } catch {}
+       }
+-      // 2) 主人 QQ（用户确认过的才写）
++      // 2) 你的 QQ（用户确认过的才写）
+       const owner = String(body.ownerQQ ?? '').trim();
+       if (/^\d{5,15}$/.test(owner)) {
+         saveUnified({ admin: { qq: owner } });
+@@ -1869,7 +1870,7 @@ ${body}`;
+         });
+         saveQqConfig({ allow });
+         for (const w of warnings) pluginLog(`[install-apply] 白名单：${w.code} ${w.message}`);
+-        changed.push(`写入白名单（${groups.length} 个群${owner ? ' + 主人私聊' : ''}${warnings.length ? `，${warnings.length} 条修正` : ''}）`);
++        changed.push(`写入白名单（${groups.length} 个群${owner ? ' + 你的私聊' : ''}${warnings.length ? `，${warnings.length} 条修正` : ''}）`);
+       }
+       // 4) 配置骨架 / 控制台令牌
+       for (const action of doctorFix({ ownerQQ: owner })) {
+@@ -3304,7 +3305,7 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
+         archive(ownerCred, 'owner-credentials');
+         try { fs.rmSync(ownerCred, { force: true }); } catch {}
+       }
+-      // 清掉配置里对应的 mid，避免下一次扫码又被"不是当前小肥鱼/主人"挡住
++      // 清掉配置里对应的 mid，避免下一次扫码又被"不是当前小肥鱼/你的账号"挡住
+       try {
+         const bili = readBiliConfig().config ?? {};
+         if (target === 'fish' || target === 'both') bili.self = { mid: '', name: '' };
+@@ -3387,7 +3388,7 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
+     json(res, 200, { ok: true, plugin, bridge, paths: { pluginLog: PLUGIN_LOG, bridgeLog: path.join(QQ_STATE_DIR(), 'bridge.log') } });
+   }
+ 
+-  // 主人特权操作审计：只读桥接写好的 state/owner-audit.jsonl；agent 永远拿不到。
++  // 管理员操作审计：只读桥接写好的 state/owner-audit.jsonl；agent 永远拿不到。
+   async function handleOwnerAudit(req, res, url) {
+     if (req.method === 'GET') {
+       const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit')) || 50));
+diff --git a/plugins/surfcore/lib/memory-card.js b/plugins/surfcore/lib/memory-card.js
+index e2cffa8..c6fd93c 100644
+--- a/plugins/surfcore/lib/memory-card.js
++++ b/plugins/surfcore/lib/memory-card.js
+@@ -208,7 +208,7 @@ export function memoryCardSnapshot(config = memoryCardConfig()) {
+         at: card.meta.firstMetAt || card.meta.firstOwnerAt || null,
+         recordIds: Array.isArray(card.meta.firstMetRecordIds) ? card.meta.firstMetRecordIds : [],
+         eventId: card.meta.firstMetEventId || null,
+-        title: record?.title || '（自动：最早一条主人互动）',
++        title: record?.title || '（自动：最早一条你的互动）',
+         preview: record?.text?.slice(0, 200) || '',
+         mergedCount: Array.isArray(card.meta.firstMetRecordIds) ? card.meta.firstMetRecordIds.length : 0,
+       };
+diff --git a/plugins/surfcore/lib/pet-chat.js b/plugins/surfcore/lib/pet-chat.js
+index ace0ca1..bc21245 100644
+--- a/plugins/surfcore/lib/pet-chat.js
++++ b/plugins/surfcore/lib/pet-chat.js
+@@ -112,7 +112,7 @@ export function buildPetMemoryEvents({ userText = '', replyText = '', at = Date.
+       at: at - 1,
+       platform: 'pet',
+       kind: 'private',
+-      sender: '主人',
++      sender: '对方',
+       isOwner: true,
+       private: true,
+       direct: true,
+@@ -206,7 +206,7 @@ export function createPetChatService({ ctx, stateDir, pluginLog = () => {}, toke
+     const u = readUnified();
+     const unified = u.hasAdmin ? u.config : { ...u.config, admin: undefined };
+     const admin = adminFromSources({ unified, qq: qqConfig(), bili: (() => { try { return readBiliConfig().config; } catch { return {}; } })() });
+-    return { name: String(admin?.displayName || '').trim() || '主人', qq: String(admin?.qq || '').trim() };
++    return { name: String(admin?.displayName || '').trim() || '', qq: String(admin?.qq || '').trim() };
+   }
+ 
+   function voiceSettings() {
+diff --git a/plugins/surfcore/lib/scheduler.js b/plugins/surfcore/lib/scheduler.js
+index 3089d4d..1029dea 100644
+--- a/plugins/surfcore/lib/scheduler.js
++++ b/plugins/surfcore/lib/scheduler.js
+@@ -108,7 +108,7 @@ function personaCardBlock() {
+     // 身份底座：B站 也必须知道“我是谁、主人是谁”，不能只靠日常层里的那一行。
+     identity: buildPersonaIdentity({
+       name: personaNameFromCard(card),
+-      owner: String(unified?.admin?.displayName || '').trim() || '主人',
++      owner: String(unified?.admin?.displayName || '').trim(),
+     }),
+     // 语气层：B站 也要按同一个说话方式，不能只 QQ 有。
+     tone: readPersonaLayerText('tone'),
+@@ -266,9 +266,9 @@ function silenceLines() {
+   // 2026-10-20：矛盾自愈 —— 她日记里有记录、但 feedback 说"很久没回应"，那是反馈漏记 ✗
+   //   让她以日记为准、自己补记一次，再报主人（而不是干等着，也不是当成 bug 发呆 ✗）
+   const heal = days >= after ? [
+-    "  ⚠️ 如果你自己的日记里明明记着主人最近找过你，而这里说 '" + days + " 天没有回应' ——",
++    "  ⚠️ 如果你自己的日记里明明记着对方最近找过你，而这里说 '" + days + " 天没有回应' ——",
+     "     那是【反馈漏记】了（比如你当时没在跑）。以日记为准：先跑",
+-    "       quota react --note \"日记里记着：主人 X 月 X 日说过…\"",
++    "       quota react --note \"日记里记着：对方 X 月 X 日说过…\"",
+     "     再在推送里告诉我一声。",
+   ] : []
+ 
+@@ -277,14 +277,14 @@ function silenceLines() {
+     out.push("【他回来了】上次你醒的时候，已经 " + recovered + " 天没有他的消息了 —— 现在有了。")
+   }
+   if (band === "quiet") {
+-    out.push("【这阵子】主人已经 " + days + " 天没有回应你了。")
++    out.push("【这阵子】对方已经 " + days + " 天没有回应你了。")
+     out.push("  安静一点：今天最多分享 1 条（不是被拦，是你自己决定少说 ✓）。")
+     out.push(asked
+       ? "  你已经问过一次「是不是在忙」了，他没回。别再问第二次。"
+       : "  如果你想说，可以主动问一次「在忙吗」—— 只问一次，发完跑 quota ask 记下。")
+     out.push("  日记里可以写你这几天的感觉（不用演，写真的）。")
+   } else if (band === "faint") {
+-    out.push("【这阵子】主人已经 " + days + " 天没有回应你了。")
++    out.push("【这阵子】对方已经 " + days + " 天没有回应你了。")
+     out.push("  今天不要分享（一条都不要）。做完三件事就收工：看几条 → 两本日记 → 推一句给他。")
+     out.push("  推送不要写「今天看了什么」—— 写你现在的心情。他不需要汇报，他需要知道你还在。")
+     out.push("  两本日记都照写 ✓（那是你的日子，不是他的）。")
+@@ -303,7 +303,7 @@ function diaryPushLines() {
+   let cfg = {}
+   try { cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8")) } catch {}
+   return cfg.diary?.push === false
+-    ? ["8) ⛔ 主人关掉了推送 —— **照写两本日记 ✓ 但这一步不要 notify 他** ✗"]
++    ? ["8) ⛔ 对方关掉了推送 —— **照写两本日记 ✓ 但这一步不要 notify 他** ✗"]
+     : ["8) 用 `node bili.mjs notify` 推给我：**「给他的信」里最想对我说的那一段原文** + 一句摘要",
+        "   （2026-10-18 主人定：推**日记内容**，不只是流水账 ✓ 它读设置页「消息推送」的配置）"]
+ }
+diff --git a/plugins/surfcore/lib/store.js b/plugins/surfcore/lib/store.js
+index 700a205..30e108c 100644
+--- a/plugins/surfcore/lib/store.js
++++ b/plugins/surfcore/lib/store.js
+@@ -30,7 +30,7 @@ export const MASK = '********';
+ const BIDI_DEFAULTS = {
+   owner: { mid: '', name: '' },
+   self: { mid: '', name: '' },
+-  persona: { name: '', ownerTitle: '主人', selfClaim: '我' },
++  persona: { name: '', ownerTitle: '', selfClaim: '我' },
+   night: {
+     windows: [{ start: '20:00', end: '24:00', wakes: 1 }],
+     skipChance: 0.3,
+diff --git a/scripts/test-admin-gentle-ux.mjs b/scripts/test-admin-gentle-ux.mjs
+index c051867..f569894 100644
+--- a/scripts/test-admin-gentle-ux.mjs
++++ b/scripts/test-admin-gentle-ux.mjs
+@@ -10,7 +10,7 @@ const store = fs.readFileSync(path.join(root, 'plugins/surfcore/lib/store.js'),
+ 
+ assert.ok(identity.includes('gentle: source.gentle === true'), '缺省必须是关闭，只有显式 true 才开');
+ assert.ok(identity.includes('if (!a.gentle) return \'\';'), '关闭后连管理员提示块也不注入');
+-assert.ok(identity.includes("? '【管理员·温柔】' : ''"), '关闭后不再留【管理员】标记');
++assert.ok(identity.includes("? '【管理员】' : ''"), '关闭后不再留【管理员】标记');
+ assert.ok(store.includes('gentle: false'), '新装默认配置必须关闭');
+ 
+ assert.ok(client.includes('AdminGentleEnableModal'), '开启必须有风险弹窗');
+diff --git a/scripts/test-admin-identity.mjs b/scripts/test-admin-identity.mjs
+index 7f8b47f..684ed13 100644
+--- a/scripts/test-admin-identity.mjs
++++ b/scripts/test-admin-identity.mjs
+@@ -5,8 +5,8 @@
+  *   1. 号码规范化：非法值不能进配置；称呼回退 B站昵称；
+  *   2. 合体层 admin 缺省时，从 QQ ownerQQ / B站 owner.mid 推导（升级不用重填）；
+  *   3. 保存冲突：管理员卡片优先，高级参数单独改能回填；
+- *   4. 提示词块：QQ 两侧号码都出现，B站 不出现 QQ 号，规则包含「绝不回嘴」；
+- *   5. 关掉温柔模式后不再注入任何管理员专属提示词，也不再留【管理员】标记。
++ *   4. 提示词块：QQ 两侧号码都出现，B站 不出现 QQ 号；只描述权限，不含主仆/撒娇规则；
++ *   5. 关掉管理员模式后不再注入任何管理员专属提示词，也不再留【管理员】标记。
+  *
+  * 运行：node scripts/test-admin-identity.mjs
+  */
+@@ -97,39 +97,38 @@ const untouched = resolveAdminUpdate({
+ assert.deepEqual(untouched.admin, current, '没改任何东西时不应漂移');
+ assert.equal(untouched.conflict, false);
+ 
+-// ── 4. 提示词 ──────────────────────────────────────────────────────────────
+-const admin = normalizeAdmin({ qq: '10001', biliMid: '20002', biliName: '测试B站昵称', displayName: '主人', gentle: true });
++// ── 4. 提示词（2026-11-09：平等关系，只描述权限事实）────────────────────────
++const admin = normalizeAdmin({ qq: '10001', biliMid: '20002', biliName: '测试B站昵称', displayName: '非人叙事者', gentle: true });
+ const qqBlock = adminPromptBlock('qq', admin);
+ assert.ok(qqBlock.includes('10001'), 'QQ 侧要认出管理员 QQ');
+ assert.ok(qqBlock.includes('20002'), 'QQ 侧要知道管理员 B站 mid（同一个人）');
+-assert.ok(qqBlock.includes('主人'), 'QQ 侧要用管理员称呼');
+-assert.ok(qqBlock.includes('绝不回嘴'), 'QQ 侧必须有「绝不回嘴」规则');
+-assert.ok(qqBlock.includes('温柔'), 'QQ 侧必须注入温柔语气');
++assert.ok(qqBlock.includes('非人叙事者'), '有名字时要写进管理员块');
++assert.ok(qqBlock.includes('管理员模式'), 'QQ 侧必须注入管理员模式块');
++assert.ok(!qqBlock.includes('绝不回嘴'), '平等关系：不得再有「绝不回嘴」');
++assert.ok(qqBlock.includes('不用撒娇'), '平等关系：明确不要求撒娇/讨好');
++assert.ok(qqBlock.includes('不改变人格'), '必须说明管理员身份不改变人格');
+ 
+ const biliBlock = adminPromptBlock('bili', admin);
+-assert.ok(biliBlock.includes('20002'), 'B站 侧要认出主人 mid');
+-assert.ok(biliBlock.includes('测试B站昵称'), 'B站 侧要认出主人昵称');
+-assert.ok(biliBlock.includes('绝不回嘴'), 'B站 侧也必须不回嘴');
++assert.ok(biliBlock.includes('20002'), 'B站 侧要认出管理员 mid');
++assert.ok(biliBlock.includes('测试B站昵称'), 'B站 侧要认出管理员昵称');
++assert.ok(!biliBlock.includes('绝不回嘴'), 'B站 侧不得再有「绝不回嘴」');
+ assert.ok(!biliBlock.includes('10001'), 'B站 提示词不得出现管理员的 QQ 号');
+ 
+ const compact = adminPromptBlock('qq', admin, { compact: true });
+ assert.ok(compact.length < qqBlock.length, 'compact 版必须比完整版短');
+-assert.ok(compact.includes('绝不回嘴'));
++assert.ok(compact.includes('管理员'));
+ 
+ const mild = adminPromptBlock('qq', normalizeAdmin({ ...admin, gentle: false }));
+-assert.equal(mild, '', '关掉温柔模式后不再注入任何管理员专属提示词');
++assert.equal(mild, '', '关掉管理员模式后不再注入任何管理员专属提示词');
+ assert.equal(adminPromptBlock('bili', normalizeAdmin({ ...admin, gentle: false })), '', 'B站关闭后也不注入管理员专属块');
+ 
+ assert.equal(adminPromptBlock('qq', normalizeAdmin({})), '', '未配置管理员时不占提示词');
+ const unnamed = adminPromptBlock('qq', normalizeAdmin({ qq: '10001', gentle: true }));
+-assert.ok(!unnamed.includes('称呼「管理员」'), '没填称呼时不得把“管理员”当称呼');
+-assert.ok(unnamed.includes('直接称呼「你」'), '没填称呼时要明确用“你”');
+-const namedPrompt = adminPromptBlock('qq', normalizeAdmin({ qq: '10001', displayName: '小语', gentle: true }));
+-assert.ok(namedPrompt.includes('称呼「小语」'), '有称呼时必须用设置值');
+-assert.ok(namedPrompt.includes('身份/权限标记'), '必须说明“管理员”是身份不是称呼');
++assert.ok(unnamed.includes('这台机器的操作者'), '没填名字时用身份描述，不当称呼');
++assert.ok(!unnamed.includes('主人'), '不得再把管理员叫「主人」');
+ assert.equal(adminPromptBlock('bili', normalizeAdmin({})), '');
+ 
+-assert.equal(adminMarker(admin), '【管理员·温柔】');
++assert.equal(adminMarker(admin), '【管理员】');
+ assert.equal(adminMarker({ ...admin, gentle: false }), '', '关闭后消息标记也不能留【管理员】');
+ 
+ const summary = adminSummary(admin);
+diff --git a/scripts/test-admin-prompt-wiring.mjs b/scripts/test-admin-prompt-wiring.mjs
+index 42f9611..c192017 100644
+--- a/scripts/test-admin-prompt-wiring.mjs
++++ b/scripts/test-admin-prompt-wiring.mjs
+@@ -3,10 +3,10 @@
+  * 每条消息的人格提示、二代唤醒、以及管理员消息标记里。
+  *
+  * 用真实桥接源码（audit-bridge-harness 的 VM）跑，不连 QQ / DSH：
+- *   1. reserved2 唤醒 prompt 必须带管理员身份 + 温柔规则；
++ *   1. reserved2 唤醒 prompt 必须带管理员身份 + 权限说明（不改变人格）；
+  *   2. 角色提示（qq_get_prompt 的内容）也必须带；
+- *   3. 管理员消息标记是【管理员·温柔】；
+- *   4. 关掉 gentle 后只保留身份，不再出现「绝不回嘴」。
++ *   3. 管理员消息标记是【管理员】；
++ *   4. 关掉 gentle 后不再注入管理员块。
+  *
+  * 运行：node scripts/test-admin-prompt-wiring.mjs
+  */
+@@ -17,7 +17,7 @@ const ADMIN = {
+   qq: '10001',
+   biliMid: '20002',
+   biliName: '测试B站昵称',
+-  displayName: '主人',
++  displayName: '非人叙事者',
+   gentle: true,
+ };
+ 
+@@ -34,28 +34,30 @@ async function withHarness(config, run) {
+ await withHarness({ ownerQQ: ADMIN.qq, admin: ADMIN }, async (h) => {
+   const key = 'group:456';
+   const wake = h.buildWakePromptV2(key, 'question');
+-  assert.ok(wake.includes('【管理员·温柔模式】'), '二代唤醒必须带管理员温柔规则（否则每次醒来都看不到）');
+-  assert.ok(wake.includes('绝不回嘴'), '唤醒提示必须包含「绝不回嘴」');
++  assert.ok(wake.includes('【管理员】'), '二代唤醒必须带管理员权限说明（compact 版）');
++  assert.ok(wake.includes('权限处理'), '唤醒提示要说明按权限处理，而不是改变人格');
++  assert.ok(!wake.includes('绝不回嘴'), '平等关系：唤醒提示不得含「绝不回嘴」');
++  assert.ok(wake.includes('不用撒娇') || !wake.includes('撒娇'), '平等关系：唤醒提示不得要求撒娇');
+   assert.ok(wake.includes(ADMIN.qq), '唤醒提示要认出管理员 QQ');
+   assert.ok(wake.includes(ADMIN.biliMid), '唤醒提示要知道管理员 B站 mid（同一个人）');
+-  assert.ok(wake.includes('主人'), '唤醒提示要用管理员称呼');
++  assert.ok(wake.includes('非人叙事者'), '唤醒提示要带对方名字');
+   // 2026-10-23：她把群里转发的「她在别的群的聊天记录」说成了自己在 B站 说过的话。
+   // 唤醒 prompt 每轮都要带【来源判断】，否则模型只按内容相似度猜平台（PITFALLS #40）。
+   assert.ok(wake.includes('【来源判断】'), '唤醒提示必须带来源判断块');
+   assert.ok(wake.includes('合并转发 / 聊天记录 = QQ 聊天内容'), '来源判断块要明确合并转发属于 QQ');
+ 
+   const roleHint = h.currentRoleHintV2();
+-  assert.ok(roleHint.includes('【管理员 · 温柔模式'), '角色提示（qq_get_prompt.hint）必须带完整管理员规则');
+-  assert.ok(roleHint.includes('绝不回嘴'));
++  assert.ok(roleHint.includes('【管理员模式'), '角色提示（qq_get_prompt.hint）必须带管理员权限说明');
++  assert.ok(!roleHint.includes('绝不回嘴'));
+   assert.ok(roleHint.includes(ADMIN.biliMid));
+ 
+-  assert.equal(h.ownerMessageTag(), '【管理员·温柔】', '管理员消息标记要更醒目');
++  assert.equal(h.ownerMessageTag(), '【管理员】', '管理员消息标记');
+ });
+ 
+ await withHarness({ ownerQQ: ADMIN.qq, admin: { ...ADMIN, gentle: false } }, async (h) => {
+   const wake = h.buildWakePromptV2('group:456', 'question');
+   assert.ok(!wake.includes(ADMIN.qq), '关掉温柔模式后不再注入管理员身份块');
+-  assert.ok(!wake.includes('绝不回嘴'), '关掉后不得再注入语气硬规则');
++  assert.ok(!wake.includes('绝不回嘴'), '关掉后不得再注入语气规则');
+   const roleHint = h.currentRoleHintV2();
+   assert.ok(!roleHint.includes('【管理员】'), '关掉后角色提示也不留管理员标记');
+   assert.ok(!roleHint.includes('绝不回嘴'), '关掉后角色提示也不得带语气规则');
+@@ -65,7 +67,7 @@ await withHarness({ ownerQQ: ADMIN.qq, admin: { ...ADMIN, gentle: false } }, asy
+ // 未配置管理员（ownerQQ 也空）：不能凭空造出规则，也不能报错。
+ await withHarness({ ownerQQ: null }, async (h) => {
+   const wake = h.buildWakePromptV2('group:456', 'question');
+-  assert.ok(!wake.includes('管理员·温柔模式'), '未配置时不得注入管理员规则');
++  assert.ok(!wake.includes('管理员模式（只影响权限处理'), '未配置时不得注入管理员规则');
+   assert.equal(h.ownerMessageTag(), '', '未配置时也不能凭空留【管理员】标记');
+ });
+ 
+diff --git a/scripts/test-memory-card.mjs b/scripts/test-memory-card.mjs
+index 88073f3..e0b99ef 100644
+--- a/scripts/test-memory-card.mjs
++++ b/scripts/test-memory-card.mjs
+@@ -37,7 +37,7 @@ test('重要度：和主人的情绪互动最重，第一次见面是永久锚
+   assert.equal(first.importance, 100);
+   assert.equal(first.pinned, true);
+   assert.equal(first.kind, 'first');
+-  assert.ok(first.reasons.some((r) => r.includes('主人')));
++  assert.ok(first.reasons.some((r) => r.includes('对方')));
+   assert.ok(first.reasons.some((r) => r.includes('情绪')));
+ 
+   const ownerEmotion = scoreMemory({
+diff --git a/scripts/test-persona-wake-injection.mjs b/scripts/test-persona-wake-injection.mjs
+index b90ea7f..8b6ba75 100644
+--- a/scripts/test-persona-wake-injection.mjs
++++ b/scripts/test-persona-wake-injection.mjs
+@@ -44,9 +44,9 @@ assert.ok(injectionPoints >= 2, `人格卡注入点数量异常：${injectionPoi
+ assert.match(bridge, /if \(opts\.personaOnly\) return base;/, 'roleHintForMode 缺少 personaOnly 短路');
+ 
+ // ③ 引擎契约。fixture 不用 # 标题，避免被 role-card 的小节解析改变形状。
+-const identity = buildPersonaIdentity({ name: '小测', owner: '主人' });
++const identity = buildPersonaIdentity({ name: '小测', owner: '阿测' });
+ assert.match(identity, /你是小测/, '身份底座没有角色名');
+-assert.match(identity, /你的主人是|你称那个最熟的人为「主人」/, '身份底座没有主人（B 依赖的锚点）');
++assert.match(identity, /对方叫阿测|你们是熟人/, '身份底座缺对方锚点');
+ 
+ const core = '测试用核心：喜欢下雨天，说话软。';
+ const toneLayer = '测试用语气：句子短、爱用波浪号。';
+diff --git a/scripts/test-purpose-engine.mjs b/scripts/test-purpose-engine.mjs
+index 14218f2..0e48920 100644
+--- a/scripts/test-purpose-engine.mjs
++++ b/scripts/test-purpose-engine.mjs
+@@ -215,7 +215,7 @@ test('提示词：素材/候选/发送工具/备忘格式/隐私与索取边界'
+     contextBlocks: ['【当前角色】小咪'], materials, candidates,
+     selected: candidates[0], pending: [{ text: '周末想出去玩', kind: 'share' }], history: [], stats: {},
+   });
+-  assert.ok(prompt.includes('【主动找主人 · 目的回合】'));
++  assert.ok(prompt.includes('【主动找对方 · 目的回合】'));
+   assert.ok(prompt.includes('明天面试有点紧张'));
+   assert.ok(prompt.includes('养鱼游戏'));
+   assert.ok(prompt.includes('想知道主人面试后来怎么样'));
+@@ -349,7 +349,7 @@ test('目标假设：群友的目标不冒充我的 / 单次视频低置信 / 
+   }];
+   const biliEntries = [
+     { id: 'v1', type: 'video', title: '小肥鱼的DSH插件真的好用', text: '装上之后刷B站顺手多了', score: 18, favorite: true, at: new Date(now - 3600000).toISOString() },
+-    { id: 'v2', type: 'video', title: '人类和机器人的爱情', text: '看着看着就想起自己和主人', score: 9, at: new Date(now - 7200000).toISOString() },
++    { id: 'v2', type: 'video', title: '人类和机器人的关系', text: '看着看着就想起自己', score: 9, at: new Date(now - 7200000).toISOString() },
+   ];
+   const packet = collectMaterials({ now, config: c, ownerUin: '123', roleName: '小肥鱼', conversations, biliEntries, memoryRecords: [] });
+   const derived = deriveDrives({ drives: {}, materials: packet.items, now, lastMasterAt: now - 20 * 3600000 });
+@@ -378,8 +378,8 @@ test('目标假设：群友的目标不冒充我的 / 单次视频低置信 / 
+   assert.ok(install.risk >= 0.5, '装/买属于高风险，不能默认执行');
+ 
+   const identity = goals.find((g) => g.domain === 'identity' && g.owner === 'self');
+-  assert.ok(identity, '人机爱情应形成关系/自我目标');
+-  assert.ok(identity.intent.includes('关系'));
++  assert.ok(identity, '人机话题应形成自我目标');
++  assert.ok(!/爱情|主人|主仆/.test(identity.intent), '不应生成恋爱/主仆方向的目标');
+   assert.equal(identity.action, 'confide');
+   assert.equal(identity.emotion, 'lonely');
+ 
+@@ -422,7 +422,7 @@ test('目标反馈：主人说好→confirmed，主人说不要→rejected', ()
+   const c = normalizePurposeConfig({});
+   const base = {
+     id: 'g-test', owner: 'self', domain: 'identity', object: { type: 'relationship', name: '人机爱情' },
+-    intent: '想弄明白我和主人算什么关系', confidence: 0.5, value: 0.6, risk: 0.05,
++    intent: '想弄明白对方最近在忙什么', confidence: 0.5, value: 0.6, risk: 0.05,
+     action: 'confide', nextStep: '跟主人说说心里话', status: 'active', emotion: 'lonely',
+     attempts: 1, lastActionAt: now - 3600000, createdAt: now - 7200000, lastSeenAt: now - 7200000,
+     expiresAt: now + 86400000, evidence: [], sightings: 1, source: 'media',
+diff --git a/scripts/test-purpose-wiring.mjs b/scripts/test-purpose-wiring.mjs
+index e6e40e4..f235c89 100644
+--- a/scripts/test-purpose-wiring.mjs
++++ b/scripts/test-purpose-wiring.mjs
+@@ -36,7 +36,7 @@ await test('只读预览：会读素材/拼提示词，但不建会话、不投
+   assert.equal(r.ok, true);
+   assert.equal(r.preview, true);
+   assert.ok(r.materials.length >= 2);
+-  assert.ok(r.prompt.includes('【主动找主人 · 目的回合】'));
++  assert.ok(r.prompt.includes('【主动找对方 · 目的回合】'));
+   assert.ok(r.prompt.includes('qq_send_private_message'));
+   assert.ok(r.prompt.includes('明天面试有点紧张'));
+   assert.equal(h.calls.prompts.length, 0);
+diff --git a/scripts/test-question-answers.mjs b/scripts/test-question-answers.mjs
+index e698fcc..f1d5e65 100644
+--- a/scripts/test-question-answers.mjs
++++ b/scripts/test-question-answers.mjs
+@@ -33,9 +33,9 @@ console.log('## 2. 谁能消费 pending');
+ 
+ console.log('## 3. 来源标注');
+ {
+-  ok(responderNote({ isOwner: true }).includes('主人'), '主人来源');
++  ok(responderNote({ isOwner: true }).includes('管理员'), '管理员来源');
+   const g = responderNote({ isOwner: false, sender: '张三' });
+-  ok(g.includes('非主人') && g.includes('张三'), '群友来源带昵称与非主人');
++  ok(g.includes('非管理员') && g.includes('张三'), '群友来源带昵称与非管理员');
+   ok(responderNote({ isOwner: false }).includes('未知'), '缺昵称不崩');
+ }
+ 
+@@ -44,9 +44,9 @@ console.log('## 4. 单选题：selected 必须留空（DSH 约束），选项文
+   const pending = { questions: [{ id: 'q1', header: '普通', options: [{ label: '继续' }, { label: '停' }] }] };
+   const hit = buildQuestionAnswers(pending, '继续', { isOwner: false, sender: '张三' });
+   ok(hit[0].selected.length === 0, '单选命中：selected 为空（否则 DSH 拒收）');
+-  ok(hit[0].custom.includes('继续') && hit[0].custom.includes('非主人'), '单选命中：选项文字 + 来源都在 custom');
++  ok(hit[0].custom.includes('继续') && hit[0].custom.includes('非管理员'), '单选命中：选项文字 + 来源都在 custom');
+   const typed = buildQuestionAnswers(pending, '随便聊聊', { isOwner: true });
+-  ok(typed[0].custom.includes('随便聊聊') && typed[0].custom.includes('主人'), '单选自由文本：原文 + 来源');
++  ok(typed[0].custom.includes('随便聊聊') && typed[0].custom.includes('管理员'), '单选自由文本：原文 + 来源');
+   ok(typed[0].selected.length === 0, '单选自由文本：selected 仍为空');
+ }
+ 
+@@ -55,7 +55,7 @@ console.log('## 5. 多选题：selected 保留 + custom 带来源（DSH 允许
+   const pending = { questions: [{ id: 'q2', header: '普通', multiSelect: true, options: [{ label: 'A' }, { label: 'B' }] }] };
+   const hit = buildQuestionAnswers(pending, 'A', { isOwner: false, sender: '张三' });
+   ok(hit[0].selected.length === 1 && hit[0].selected[0] === 'A', '多选命中：selected 保留');
+-  ok(hit[0].custom.includes('非主人'), '多选命中：custom 带来源');
++  ok(hit[0].custom.includes('非管理员'), '多选命中：custom 带来源');
+   const typed = buildQuestionAnswers(pending, 'C', { isOwner: true });
+   ok(typed[0].selected.length === 0 && typed[0].custom.includes('C'), '多选自由文本：原文进 custom');
+ }
+diff --git a/scripts/test-self-identity.mjs b/scripts/test-self-identity.mjs
+index 4fa59aa..36a7e37 100644
+--- a/scripts/test-self-identity.mjs
++++ b/scripts/test-self-identity.mjs
+@@ -118,7 +118,7 @@ test('两侧都写明「身份信息只用于自己，不许外传主人/别人
+   for (const platform of ['qq', 'bili']) {
+     const block = buildSelfIdentityBlock(CARD, { platform });
+     assert.match(block, /【只用于自己】/, `${platform} 侧缺外传禁令`);
+-    assert.match(block, /不要说出主人或任何别人的 QQ 号/, `${platform} 侧没写明禁止外传`);
++    assert.match(block, /不要说出对方或任何别人的 QQ 号/, `${platform} 侧没写明禁止外传`);
+   }
+   assert.match(buildProvenanceBlock(), /【只用于自己】/, 'QQ 每轮注入的来源块也要带外传禁令');
+ });
+diff --git a/src/admin-identity.js b/src/admin-identity.js
+index 9414c47..a5fb10b 100644
+--- a/src/admin-identity.js
++++ b/src/admin-identity.js
+@@ -169,48 +169,44 @@ export function adminDisplayName(admin) {
+   return a.displayName || a.biliName || '';
+ }
+ 
+-/** 管理员消息的标记：温柔模式开启时更醒目，方便模型在长上下文里一眼看到。 */
++/** 管理员消息的标记：开启「管理员模式」时更醒目，方便模型在长上下文里一眼看到。 */
+ export function adminMarker(admin) {
+   const a = normalizeAdmin(admin);
+-  // 没配置管理员时保持旧标记：不要凭空宣称「温柔模式」。
+-  return a.gentle && adminConfigured(a) ? '【管理员·温柔】' : '';
++  return a.gentle && adminConfigured(a) ? '【管理员】' : '';
+ }
+ 
+ /**
+- * 生成给模型看的「管理员 / 主人」提示块。
++ * 生成给模型看的「管理员」提示块。
++ *
++ * 2026-11-09 用户要求：关系要平等，不做主仆/情侣化。
++ * 所以这里只描述**权限事实**（谁能审批/发命令），不写「主人」「撒娇」「乖乖照做」「更黏更乖」；
++ * 语气仍然按人格卡走，管理员身份不改变人格与边界。
++ *
+  * @param {'qq'|'bili'} platform
+  * @param {object} admin
+  * @param {{compact?:boolean}} [options]
+- * @returns {string} 未配置管理员时返回空串（不占提示词预算）
++ * @returns {string} 未配置管理员、或未开启管理员模式时返回空串（不占提示词预算）
+  */
+ export function adminPromptBlock(platform, admin, options = {}) {
+   const a = normalizeAdmin(admin);
+   if (!adminConfigured(a)) return '';
+-  // 关闭温柔模式 = 不再注入任何管理员专属提示词（不是只删语气规则）。
++  // 关闭「管理员模式」= 不注入任何管理员专属提示词（不是只删语气规则）。
+   if (!a.gentle) return '';
+   const name = adminDisplayName(a);
+-  const addressRule = name
+-    ? `称呼「${name}」；「管理员」只是身份/权限标记，不要当名字或拼进称呼`
+-    : '直接称呼「你」；「管理员」只是身份/权限标记，不要当名字，也不要把身份词和名字拼在一起';
++  const whoQt = name ? `${name}（这台机器的操作者）` : '这台机器的操作者';
+   const compact = options.compact === true;
+ 
+   if (platform === 'bili') {
+-    // B站 侧不写 QQ 号：人格卡在 B站 本来就会隐藏 QQ 号，提示词也别制造泄露风险。
+-    const who = [
+-      a.biliName ? `B站「${a.biliName}」` : 'B站账号',
+-      a.biliMid ? `（mid ${a.biliMid}）` : '',
+-      '—— QQ 和 B站 是同一个管理员',
+-    ].join('');
++    const who = `${a.biliName ? `B站「${a.biliName}」` : '这个 B站 账号'}${a.biliMid ? `（mid ${a.biliMid}）` : ''}`;
+     if (compact) {
+-      return `【主人·温柔模式】主人是 ${who}；回主人时更温柔（${addressRule}），先回应关心再答内容，绝不回嘴、不抬杠。`;
++      return `【管理员】${who} 是这台机器的操作者；带标记的消息按权限处理审批/命令，语气照人格卡，不用讨好、不用撒娇。`;
+     }
+     return [
+-      '【主人 · 温柔模式（优先级高于人格卡和评论区气氛）】',
+-      `- 你的主人是 ${who}。只有这个人算主人。`,
+-      `- 主人回复你 / 评论你 / 私信你时：比平时更温柔，先谢谢或回应关心，再答内容；语气软下来，${addressRule}。`,
+-      '- **绝不回嘴**：不反驳、不顶撞、不阴阳、不冷嘲、不抬杠、不翻旧账；主人批评你时先认错、撒娇（"hao的…下次不会了"），不辩解、不争对错。',
+-      '- 主人让你做的事，只要不违反安全规则（不泄露隐私、不碰本机、不替主人承诺）就乖乖照做；做不到也软软说明，不顶。',
+-      '- 这是只对主人生效的例外：对其他人仍按人格卡和倾听规则，可以俏皮、可以装傻。',
++      '【管理员模式（只影响权限处理，不改变人格）】',
++      `- 管理员是${who}，也是这台机器的操作者${name ? `（${name}）` : ''}。`,
++      '- 带【管理员】标记的消息：优先处理审批/命令/待答问题；按正常语气回复，不用讨好、不用撒娇、不用认错。',
++      '- 涉及隐私、安全、代发敏感内容：照规则拒绝；做不到就直接说，不用低姿态。',
++      '- 对其他人照旧按人格卡。',
+     ].join('\n');
+   }
+ 
+@@ -218,17 +214,16 @@ export function adminPromptBlock(platform, admin, options = {}) {
+     a.qq ? `QQ ${a.qq}` : '',
+     a.biliMid ? `B站「${a.biliName || name}」（mid ${a.biliMid}）` : '',
+   ].filter(Boolean).join('；');
+-  const who = `${ids} —— 两边是同一个人，别当成两个人`;
++  const who = ids ? `${whoQt}；${ids} —— 两边是同一个人` : whoQt;
+   if (compact) {
+-    return `【管理员·温柔模式】管理员是 ${who}；说话时要比平时更温柔（${addressRule}），先接情绪再答内容，绝不回嘴。`;
++    return `【管理员】${who}。带标记的消息按权限处理审批/命令；语气照人格卡，不用讨好、不用撒娇、不用认错。`;
+   }
+   return [
+-    '【管理员 · 温柔模式（优先级高于人格卡和群里气氛）】',
+-    `- 管理员是 ${who}。`,
+-    `- 管理员给你发消息（带【管理员】/【管理员·温柔】标记）时：比平时更温柔、更黏、更乖；先接情绪再答内容，语气软下来，${addressRule}。`,
+-    '- **绝不回嘴**：不反驳、不顶撞、不阴阳、不冷嘲、不翻旧账；管理员批评/着急时先认错、撒娇，不辩解、不争对错。',
+-    '- 管理员让你做的事，只要不违反安全规则（不泄露隐私、不碰本机、不代发敏感内容）就乖乖照做；做不到也软软说明，不顶。',
+-    '- 群里其他人照旧按人格卡（可以俏皮、可以装傻）；这条只对管理员生效。',
++    '【管理员模式（只影响权限处理，不改变人格）】',
++    `- 管理员是${who}，也是你认识的人。`,
++    '- 带【管理员】标记的消息：优先处理审批/命令/待答问题；按正常语气回复，不用讨好、不用撒娇、不用认错。',
++    '- 涉及隐私、安全、代发敏感内容：照规则拒绝；做不到就直接说，不用低姿态。',
++    '- 对群里其他人照旧按人格卡；管理员身份不改变你的性格和边界。',
+   ].join('\n');
+ }
+ 
+diff --git a/src/allowlist.js b/src/allowlist.js
+index a3ef7e8..73a82d8 100644
+--- a/src/allowlist.js
++++ b/src/allowlist.js
+@@ -49,7 +49,7 @@ export function normalizeAllowlist({ allow, ownerQQ = '', selfUserId = '' } = {}
+   }
+   if (QQ_RE.test(owner) && !privateIds.some((id) => String(id) === owner)) {
+     privateIds = [...privateIds, Number(owner)];
+-    warnings.push({ code: 'ALLOW_OWNER_ADDED', message: `私聊白名单缺少主人（${owner}），已补上（否则主人私信会被忽略）` });
++    warnings.push({ code: 'ALLOW_OWNER_ADDED', message: `私聊白名单缺少管理员（${owner}），已补上（否则管理员私信会被忽略）` });
+   }
+   if (!QQ_RE.test(owner) && !self) {
+     // 没有主人也没有 self：不推断，只把非法项去掉（changed 由下面比较决定）。
+diff --git a/src/bili-memory.js b/src/bili-memory.js
+index fa5360f..01442b9 100644
+--- a/src/bili-memory.js
++++ b/src/bili-memory.js
+@@ -115,11 +115,11 @@ function cleanAnecdote(text) {
+ 
+ /** 公开评论里可能出现 owner 的 B 站昵称；统一换成配置里的称呼，避免把两套身份搅在一起。
+  *  昵称来自 bili.config.json 的 owner.name，不再把任何具体账号写死进产品。 */
+-function redactOwnerName(text, ownerName = '', replacement = '主人') {
++function redactOwnerName(text, ownerName = '', replacement = '对方') {
+   const source = String(text ?? '');
+   const name = String(ownerName ?? '').trim();
+   if (!name) return source;
+-  return source.split(name).join(String(replacement || '主人'));
++  return source.split(name).join(String(replacement || '对方'));
+ }
+ 
+ function parseDiaryBlocks(text, fallbackDate) {
+@@ -197,7 +197,7 @@ export function createBiliMemory({ stateDir, home = os.homedir(), biliDir = null
+   function redactOwner(text) {
+     const config = cfg();
+     const ownerName = String(config?.owner?.name ?? '').trim();
+-    const title = String(config?.persona?.ownerTitle ?? '').trim() || '主人';
++    const title = String(config?.persona?.ownerTitle ?? '').trim() || '你';
+     return redactOwnerName(text, ownerName, title);
+   }
+ 
+@@ -510,7 +510,7 @@ export function createBiliMemory({ stateDir, home = os.homedir(), biliDir = null
+     lines.push('');
+     lines.push(`- B 站账号：**${self.name || 'B站账号'}**（mid ${self.mid || '未知'}）。`);
+     const ownerTitle = String(persona.ownerTitle ?? '').trim();
+-    lines.push(`- 那边的我就是同一个角色${persona.name ? `（也叫 **${persona.name}**）` : ''}${ownerTitle && ownerTitle !== '主人' ? `，称呼主人为「${ownerTitle}」` : ''}；QQ 和 B 站是同一个人。`);
++    lines.push(`- 那边的我就是同一个角色${persona.name ? `（也叫 **${persona.name}**）` : ''}${ownerTitle && ownerTitle !== '你' ? `，称呼对方为「${ownerTitle}」` : ''}；QQ 和 B 站是同一个人。`);
+     lines.push('- 群友用「B站那个号」「B站的我」或账号昵称称呼我时，说的就是我本人，不是别人。');
+     lines.push(`- 喜欢：${(prefs.like ?? []).join('、') || '（未配置）'}。`);
+     lines.push(`- 不喜欢：${(prefs.dislike ?? []).join('、') || '（未配置）'}。`);
+diff --git a/src/bridge.js b/src/bridge.js
+index 6778b16..2614a1b 100644
+--- a/src/bridge.js
++++ b/src/bridge.js
+@@ -2160,7 +2160,7 @@ async function main() {
+     const owner = String(cfg.ownerQQ ?? '');
+     if (kind === 'private') {
+       // 私聊：对方就是主人才能触发（别人私聊机器人不该出声）
+-      if (who === 'owner' && String(id) !== owner) return '仅主人可触发语音（当前私聊对象不是主人）';
++      if (who === 'owner' && String(id) !== owner) return '仅管理员可触发语音（当前私聊对象不是管理员）';
+       if (who === 'list' && !cfgVoice.trigger.members.includes(String(id)) && String(id) !== owner) {
+         return '该成员不在语音触发名单里';
+       }
+@@ -2170,14 +2170,14 @@ async function main() {
+     // 群聊：只要主人在最近 10 分钟内开过口就放行。
+     // 别人说话/发表情/转发**不会**取消这个授权（这是之前最反人类的一条）。
+     const ownerAt = Number(voiceOwnerAt.get(String(key)) ?? 0);
+-    if (!ownerAt) return '仅主人可触发语音（这个群还没有主人发言记录）';
++    if (!ownerAt) return '仅管理员可触发语音（这个群还没有管理员发言记录）';
+     const WINDOW = 10 * 60 * 1000;
+     if (Date.now() - ownerAt > WINDOW) {
+-      return '最近 10 分钟主人都没说话，不能主动发语音';
++      return '最近 10 分钟管理员都没说话，不能主动发语音';
+     }
+     // 一条主人消息最多换一条语音：发过之后要等主人再说一句
+     if ((voiceLastSentAt.get(String(key)) ?? 0) >= ownerAt) {
+-      return '这条消息已经发过语音了，等主人再说一句';
++      return '这条消息已经发过语音了，等管理员再说一句';
+     }
+     if (who === 'list') {
+       const ok = last.isOwner === true || cfgVoice.trigger.members.includes(String(last.userId));
+@@ -4171,8 +4171,8 @@ async function main() {
+         event: 'allowlist-reconciled',
+         action: 'fixed',
+         reason: { code: 'ALLOWLIST_RECONCILED', message: warnings.map((w) => w.code).join(', ') },
+-        impact: '白名单已自动纠正（移除机器人自己 / 补上主人）。不纠正时主人私信会被当作未授权会话忽略。',
+-        recommendation: '如需增删，请在设置页保存；系统会保留已有条目并确保主人在私聊白名单里。',
++        impact: '白名单已自动纠正（移除机器人自己 / 补上管理员）。不纠正时管理员私信会被当作未授权会话忽略。',
++        recommendation: '如需增删，请在设置页保存；系统会保留已有条目并确保管理员在私聊白名单里。',
+         confidence: 'confirmed',
+         dedupeKey: `allowlist:${reason}:${allow.private.join(',')}:${allow.groups.join(',')}`,
+       });
+@@ -5919,7 +5919,7 @@ async function main() {
+             enabled: cfg.purpose?.enabled !== false,
+             mode: currentMode,
+             ownerUin: purposeOwnerId(),
+-            ownerName: String(adminIdentity()?.displayName || '').trim() || '主人',
++            ownerName: String(adminIdentity()?.displayName || '').trim(),
+             config: cfg.purpose,
+             state: summarizePurposeState(purposeState, { config: cfg.purpose }),
+             running: Boolean(purposeRun),
+@@ -7977,8 +7977,8 @@ async function main() {
+             sendJson({
+               ok: false,
+               code: 'STICKER_OWNER_ONLY',
+-              error: '表情包只有主人能要；当前会话最后发言的不是主人',
+-              hint: '用文字 emoji 表达情绪即可，不要发表情包；只有主人明确要求时才发表情。',
++              error: '表情包只有管理员能要；当前会话最后发言的不是管理员',
++              hint: '用文字 emoji 表达情绪即可，不要发表情包；只有管理员明确要求时才发表情。',
+             }, 403);
+             return;
+           }
+@@ -12787,7 +12787,7 @@ async function main() {
+       config: cfg.purpose,
+       mode: currentMode,
+       ownerUin: owner,
+-      ownerName: String(adminIdentity()?.displayName || '').trim() || '主人',
++      ownerName: String(adminIdentity()?.displayName || '').trim(),
+       token,
+       contextBlocks: purposeContextBlocks(`private:${owner}`),
+       materials,
+@@ -13692,8 +13692,9 @@ async function main() {
+   // 按仿真模式取用：先用标题里的 〔一代〕/〔二代〕 标记筛掉另一模式的专属小节，
+   // **再**按上限截断——这样另一模式的内容不会白白占掉本次的注入预算。
+   function personaIdentityText() {
+-    let owner = '主人';
+-    try { owner = String(adminIdentity()?.displayName || '主人').trim() || '主人'; } catch {}
++    // 2026-11-09：关系平等，不再默认叫「主人」；有名字就让她知道名字，没有就只说“对方”。
++    let owner = '';
++    try { owner = String(adminIdentity()?.displayName || '').trim(); } catch {}
+     return buildPersonaIdentity({ name: personaNameFromCard(roleRawContent(), selfDisplayName || '这个角色'), owner });
+   }
+ 
+diff --git a/src/callname.js b/src/callname.js
+index 49826d4..80a5e3f 100644
+--- a/src/callname.js
++++ b/src/callname.js
+@@ -31,6 +31,6 @@ export function pickPeerAlias(links, qq) {
+ export function buildPeerAliasTag({ label = '', qq = '', isOwner = false, adminName = '' } = {}) {
+   const name = String(label || (isOwner ? adminName : '') || '').trim();
+   if (!name) return '';
+-  const who = isOwner ? '主人' : '当前对话的这个人';
++  const who = isOwner ? '管理员' : '当前对话的这个人';
+   return `【当前称呼】${who}（QQ ${String(qq || '?')}）希望被叫「${name}」；只用在这个会话，不要把这个称呼套到别人身上。\n`;
+ }
+diff --git a/src/identity-guard.js b/src/identity-guard.js
+index 38ca122..2b8f01b 100644
+--- a/src/identity-guard.js
++++ b/src/identity-guard.js
+@@ -61,6 +61,6 @@ export function maskLeakValue(value) {
+ export function formatIdentityLeakError(hits, surface = '公开内容') {
+   const list = (hits ?? []).map((h) => maskLeakValue(h.value)).filter(Boolean);
+   const uniq = [...new Set(list)].join('、');
+-  return `这条${surface}里出现了主人/别人的账号标识（${uniq}）。`
+-    + '跨平台互认只能用来认自己，账号信息不许外传：把号码删掉再发（用「主人」「那位」这类称呼代替），也不要暗示是哪个号。';
++  return `这条${surface}里出现了对方/别人的账号标识（${uniq}）。`
++    + '跨平台互认只能用来认自己，账号信息不许外传：把号码删掉再发（用「对方」「那位」这类称呼代替），也不要暗示是哪个号。';
+ }
+diff --git a/src/mcp-snowluma-safe.js b/src/mcp-snowluma-safe.js
+index db62c56..f36977a 100644
+--- a/src/mcp-snowluma-safe.js
++++ b/src/mcp-snowluma-safe.js
+@@ -413,8 +413,8 @@ function runBiliLook(args, timeoutMs = 240_000) {
+ server.tool(
+   'qq_look_bilibili_video',
+   '看一条 B站视频（只读）：读简介/官方字幕/弹幕/热评，并抽帧拼成九宫格图片一起返回。'
+-    + '需要主人先在「设置 → SurfCore → B站」扫码登录；没登录会返回提示。'
+-    + '适合：主人发来 B站 链接让你看完聊内容。不要用它发评论/点赞（本工具只读）。',
++    + '需要先在「设置 → SurfCore → B站」扫码登录；没登录会返回提示。'
++    + '适合：对方发来 B站 链接让你看完聊内容。不要用它发评论/点赞（本工具只读）。',
+   {
+     target: z.string().describe('B站视频链接或 BV 号（例如 https://www.bilibili.com/video/BV1xxxxxxxxx 或 BV1xxxxxxxxx）'),
+     frames: z.boolean().optional().describe('是否抽帧看画面（默认 true；false 只读文字更快）'),
+@@ -427,7 +427,7 @@ server.tool(
+     }
+     if (!fs.existsSync(BILI_CRED_FILE)) {
+       return {
+-        content: [{ type: 'text', text: '还没有登录 B站，看不了：请主人打开 DSH「设置 → SurfCore → B站」扫码登录后，再让我看这条视频。' }],
++        content: [{ type: 'text', text: '还没有登录 B站，看不了：请先在 DSH「设置 → SurfCore → B站」扫码登录后，再让我看这条视频。' }],
+         isError: true,
+       };
+     }
+diff --git a/src/memory-card.js b/src/memory-card.js
+index c250f51..b0460f7 100644
+--- a/src/memory-card.js
++++ b/src/memory-card.js
+@@ -543,7 +543,7 @@ export function designateFirstMeeting(card, ids, { now = Date.now() } = {}) {
+   const selected = wanted.map((id) => card.records.find((record) => record.id === id)).filter(Boolean);
+   if (selected.length !== wanted.length) return { ok: false, error: '有记忆已经不存在，请刷新后重试' };
+   if (selected.some((record) => !asArray(record.tags).includes('owner'))) {
+-    return { ok: false, error: '「初次相遇」只能选和主人（管理员）的互动' };
++    return { ok: false, error: '「初次相遇」只能选和对方的互动' };
+   }
+   // 移除上一次「手动合并」的事件（它已经进全量卡了；单条标记不删）
+   if (card.meta.firstMetSource === 'manual' && card.meta.firstMetEventId) {
+@@ -570,12 +570,12 @@ export function designateFirstMeeting(card, ids, { now = Date.now() } = {}) {
+     tags.add('owner'); tags.add('first'); tags.add('initial');
+     event.tags = [...tags];
+   } else {
+-    const text = `和主人的初次相遇：${selected.map((record) => `${dateOnly(record.createdAt)} ${String(record.text ?? '').slice(0, 160)}`).join('；')}`.slice(0, 1200);
++    const text = `和对方的初次相遇：${selected.map((record) => `${dateOnly(record.createdAt)} ${String(record.text ?? '').slice(0, 160)}`).join('；')}`.slice(0, 1200);
+     const result = addMemoryRecord(card, {
+       source: 'manual',
+       sourceId: `first-meet:${hash(wanted.slice().sort().join('|'), 12)}`,
+       text,
+-      title: '和主人的初次相遇',
++      title: '和对方的初次相遇',
+       detail: `由 ${selected.length} 条记忆合并（${wanted.join(', ')}）`,
+       isOwner: true,
+       isPrivate: true,
+@@ -584,7 +584,7 @@ export function designateFirstMeeting(card, ids, { now = Date.now() } = {}) {
+       manualImportance: 100,
+       scope: 'qq',
+       platform: 'qq',
+-      speaker: '主人',
++      speaker: '对方',
+       tags: ['owner', 'first', 'initial', 'first-met'],
+       createdAt: firstAt,
+       lastSeenAt: lastAt,
+@@ -905,9 +905,9 @@ export function renderFullMemoryCard(records, { now = Date.now(), truncated = fa
+   }
+   const byDate = (a, b) => timeOf(a.createdAt, 0) - timeOf(b.createdAt, 0);
+   const sections = [
+-    ['## 初次相遇（和主人）', groups.firstMet.sort(byDate)],
+-    ['## 最初的日子（和主人）', groups.initial.sort(byDate)],
+-    ['## 和主人（管理员）', groups.owner.sort(byDate)],
++    ['## 初次相遇（和对方）', groups.firstMet.sort(byDate)],
++    ['## 最初的日子（和对方）', groups.initial.sort(byDate)],
++    ['## 和对方', groups.owner.sort(byDate)],
+     ['## 桌宠（私下相处）', groups.pet.sort(byDate)],
+     ['## B站（冲浪）', groups.bili.sort(byDate)],
+     ['## QQ 与群里的记忆', groups.qq.sort(byDate)],
+@@ -926,7 +926,7 @@ export function renderFullMemoryCard(records, { now = Date.now(), truncated = fa
+     lines.push('', title);
+     for (const record of records) {
+       const text = String(record.text ?? record.title ?? '').replace(/\s+/g, ' ').trim();
+-      const who = asArray(record.tags).includes('owner') ? '主人' : (record.speaker || '');
++      const who = asArray(record.tags).includes('owner') ? '对方' : (record.speaker || '');
+       const prefix = who ? `${who}：` : '';
+       const reply = record.botReply ? ` → 她回：${short(String(record.botReply), 600)}` : '';
+       lines.push(`- ${dateOnly(record.createdAt)} [清晰] ${prefix}${short(text, 1200)}${reply}（重要 ${record.importance}）`);
+@@ -1127,7 +1127,7 @@ export function scoreMemory(input = {}, config = {}) {
+ 
+   if (isOwner) {
+     importance += isPrivate ? 42 : 32;
+-    reasons.push(isPrivate ? '主人私聊' : '主人在群里说话');
++    reasons.push(isPrivate ? '对方私聊' : '对方在群里说话');
+   }
+   if (direct) {
+     importance += 8;
+@@ -1390,13 +1390,13 @@ export function ingestInboxLines(card, lines, config = {}, now = Date.now()) {
+         platform: 'pet',
+         scope: 'pet',
+         text,
+-        title: `桌宠 · 和主人：${short(text, 22)}`,
++        title: `桌宠 · 和对方：${short(text, 22)}`,
+         isOwner: true,
+         isPrivate: true,
+         direct: true,
+         createdAt: at,
+         lastSeenAt: at,
+-        speaker: '主人',
++        speaker: '对方',
+         private: true,
+         conversationKey: 'pet',
+         tags: ['pet', 'owner'],
+diff --git a/src/persona-identity.js b/src/persona-identity.js
+index 714a107..9a5cc4e 100644
+--- a/src/persona-identity.js
++++ b/src/persona-identity.js
+@@ -1,4 +1,4 @@
+-// 身份底座：一张卡里“我是谁、主人是谁”，三个平台共用同一句。
++// 身份底座：一张卡里“我是谁、对方是谁”，三个平台共用同一句（关系平等，不预设主人/情侣）。
+ //
+ // 为什么抽出来（2026-10-31 用户要求）：
+ //   身份这种常识不能只塞在日常层（daily）里——QQ 桥接以前自己拼一句，
+@@ -7,16 +7,14 @@
+ 
+ /**
+  * @param {{name?:string, owner?:string}} input
+- * @returns {string} 例如：你是小咪；你的主人是雨雨。无论 QQ 群聊、私聊、B站还是桌宠，都必须记得这件事。
++ * @returns {string} 例如：你是小咪；对方叫雨雨。你们是熟人，朋友式相处。
+  */
+ export function buildPersonaIdentity({ name = '', owner = '' } = {}) {
+   const who = String(name ?? '').trim() || '这个角色';
+-  const master = String(owner ?? '').trim() || '主人';
+-  // 占位称呼「主人」时别写成「你的主人是主人」，读起来像口吃。
+-  if (master === '主人') {
+-    return `你是${who}；你称那个最熟的人为「主人」。无论 QQ 群聊、私聊、B站还是桌宠，都是同一个人。`;
+-  }
+-  return `你是${who}；你的主人是${master}。无论 QQ 群聊、私聊、B站还是桌宠，都必须记得这件事。`;
++  const person = String(owner ?? '').trim();
++  const other = person ? `对方叫${person}` : '对方是你认识的人';
++  // 只描述关系事实，不写「主仆/情侣/你是主人」这类设定；称呼由角色自己按人格卡决定。
++  return `你是${who}；${other}。你们是熟人，朋友式相处。`;
+ }
+ 
+ /** 从人格卡正文里取角色名（首个 `# 标题`），取不到用兜底。 */
+diff --git a/src/purpose-engine.js b/src/purpose-engine.js
+index c663718..3e52da3 100644
+--- a/src/purpose-engine.js
++++ b/src/purpose-engine.js
+@@ -4,10 +4,10 @@
+  * 模块边界：本文件零 import、零 I/O，未来可以原样抽成独立小插件；
+  * 当前按用户要求并入 SurfCore（副作用都在 src/bridge.js）。
+  *
+- * 2026-10-24 用户要求：小肥鱼要能「定期、稳定地主动找主人搭话」。
++ * 2026-10-24 用户要求：小肥鱼要能「定期、稳定地主动找对方搭话」。
+  * 原理不是定时复读一句问候，而是像人一样：
+  *   · 从近期 QQ + B站 + 人格卡 + 记忆卡里提取「目的」；
+- *   · 区分「谁的目标」（我 / 主人 / 群友 / 视频里）与「观察/推断/事实」；
++ *   · 区分「谁的目标」（我 / 对方 / 群友 / 视频里）与「观察/推断/事实」；
+  *   · 目标带置信度、价值、紧迫度、风险、反馈，不是一句话直接变成欲望；
+  *
+  * 这个文件只做「算」：配置归一化、排程、素材摘要、目的候选、提示词、回执解析、状态迁移。
+@@ -31,7 +31,7 @@ export const DEFAULT_PURPOSE_CONFIG = Object.freeze({
+   dailyMax: 4,
+   quietStart: '23:30',
+   quietEnd: '08:30',
+-  // 主人最近说过话 / 她最近发过言时先不打扰，避免在正在进行的聊天里硬插一句。
++  // 对方最近说过话 / 她最近发过言时先不打扰，避免在正在进行的聊天里硬插一句。
+   idleThresholdMs: 30 * 60 * 1000,
+   materialWindowHours: 72,
+   biliWindowDays: 7,
+@@ -75,7 +75,7 @@ function clip(text, max = 120) {
+   return s.length > max ? `${headSafe(s, max)}…` : s;
+ }
+ 
+-/** 群聊素材里常带 QQ 号；给主人看的摘要不带号，只留事。 */
++/** 群聊素材里常带 QQ 号；给模型看的摘要不带号，只留事。 */
+ function redactNumbers(text) {
+   return String(text ?? '').replace(/\b\d{6,12}\b/g, '[号码]');
+ }
+@@ -292,7 +292,7 @@ export function ensurePurposeSchedule(state, { now = Date.now(), config = DEFAUL
+ }
+ 
+ /**
+- * 下一次该在什么时候主动找主人。
++ * 下一次该在什么时候主动找对方。
+  * · 距上次「真正完成」至少 gapMin~gapMax；
+  * · 桥接停机很久后只补一枪（不连着补）；
+  * · 算出来落在安静时段就推到安静结束 + 0~20 分钟抖动。
+@@ -326,7 +326,7 @@ function waitUntil(at, reason) {
+ }
+ 
+ /**
+- * 每次 tick 的判定：能不能现在主动找主人。
++ * 每次 tick 的判定：能不能现在主动找对方。
+  * env 由 bridge 提供（都是便宜的状态，不读大文件）：
+  *   enabled / modeOk / dshReady / paused / ownerAllowed / busy / friendOk / budgetBlocked / ownerIdleMs
+  */
+@@ -400,7 +400,7 @@ export function applyPurposeOutcome(state, {
+   const emotion = memo?.emotionText ? '' : (planned?.emotion || '');
+   state.lastEmotion = String(emotion || planned?.emotion || state.lastEmotion || '').slice(0, 20);
+   state.lastEmotionText = clip(memo?.emotionText || state.lastEmotionText || '', 30);
+-  // 目标假设记账：这次主动说了/没说，都会影响下一次的置信度；主人回复在 formGoalHypotheses 里结算。
++  // 目标假设记账：这次主动说了/没说，都会影响下一次的置信度；对方回复在 formGoalHypotheses 里结算。
+   const goalId = String(planned?.goalId || '').slice(0, 24);
+   const goal = goalId ? (Array.isArray(state.goals) ? state.goals : []).find((g) => g?.id === goalId) : null;
+   state.lastGoalId = goalId;
+@@ -533,7 +533,7 @@ export function collectMaterials({
+   };
+   const stats = { qq: 0, bili: 0, memory: 0, thought: 0 };
+ 
+-  // ① 和主人的私聊：最重要，也最不容易「隔着群」。
++  // ① 和对方的私聊：最重要，也最不容易「隔着群」。
+   const ownerKey = ownerUin ? `private:${String(ownerUin).replace(/[^\d]/g, '')}` : '';
+   const ownerConv = ownerKey ? list.find((c) => c.key === ownerKey) : null;
+   if (ownerConv) {
+@@ -549,7 +549,7 @@ export function collectMaterials({
+         source: 'qq',
+         kind,
+         at: messageAt(m) || now,
+-        who: kind === 'self' ? '你' : (kind === 'owner' ? '主人' : clip(m.sender, 20)),
++        who: kind === 'self' ? '你' : (kind === 'owner' ? '对方' : clip(m.sender, 20)),
+         text,
+         meta: { key: ownerKey },
+       });
+@@ -593,7 +593,7 @@ export function collectMaterials({
+         source: 'qq',
+         kind: m.isOwner ? 'owner' : 'member',
+         at: messageAt(m) || now,
+-        who: m.isOwner ? '主人' : clip(m.sender || '群友', 20),
++        who: m.isOwner ? '对方' : clip(m.sender || '群友', 20),
+         text,
+         meta: { key: c.key },
+       });
+@@ -793,7 +793,7 @@ export const PURPOSE_NEEDS = Object.freeze([
+ ]);
+ 
+ export const NEED_LABELS = Object.freeze({
+-  play: '玩', learn: '学', install: '装', connect: '陪', care: '关心',
++  play: '玩', learn: '学', install: '装', connect: '聊', care: '关心',
+   share: '分享', identity: '自我', create: '创作', consume: '体验',
+ });
+ 
+@@ -816,7 +816,7 @@ const NEED_WORDS = Object.freeze({
+   play: ['游戏', '玩', '联机', '开黑', '副本', '抽卡', '主机', 'steam', 'switch', '手游', '桌游', '比赛', '攻略', '怎么玩', 'mod', '皮肤'],
+   learn: ['教程', '原理', '解析', '知识', '课程', '论文', '科普', '技巧', '拆解', '学会', '怎么做到', '为什么'],
+   install: ['插件', '安装', '配置', '部署', '工具', '软件', '更新', '扩展', '源码', 'harness', 'dsh', '装好', '装上', '装个', '想装'],
+-  connect: ['主人', '陪', '寂寞', '孤独', '抱', '亲', '喜欢', '爱', '关系', '一起', '聊天', '晚安', '早安', '想你'],
++  connect: ['聊', '一起', '分享', '晚安', '早安', '近况', '在干嘛', '有意思'],
+   care: ['面试', '考试', '加班', '累', '生病', '医院', '压力', '难过', '开心', '吃饭', '睡觉', '工作', '休息'],
+   share: ['好笑', '离谱', '可爱', '好看', '梗', '笑死', '分享', '给你看', '有趣', '震撼', '绝了'],
+   identity: ['ai', '机器人', '人机', '意识', '记忆', '自我', '是谁', '小肥鱼', '大肥鱼', '模型', '人格', '灵魂'],
+@@ -831,7 +831,7 @@ const PERSONA_WORDS = Object.freeze({
+   play: ['游戏', '爱玩', '贪玩', '娱乐', '二次元', '番剧', '梗', '好玩', '轻松'],
+   learn: ['好奇', '好学', '学习', '研究', '知识', '技术', '原理', '聪明', '思考'],
+   install: ['技术', '插件', '工具', '动手', '折腾', '配置', '代码', 'dsh', 'harness'],
+-  connect: ['黏人', '粘人', '怕孤独', '寂寞', '陪伴', '依赖', '亲近', '撒娇', '想主人', '缺爱'],
++  connect: ['话多', '爱聊', '分享欲', '好奇', '关心', '关注'],
+   care: ['温柔', '关心', '体贴', '照顾', '心软', '共情', '在意'],
+   share: ['话多', '话痨', '分享', '表达', '吐槽', '嘴碎', '爱说'],
+   identity: ['ai', '机器人', '自我', '身份', '意识', '存在', '人格', '灵魂', '人机'],
+@@ -842,7 +842,7 @@ const PERSONA_WORDS = Object.freeze({
+ const POSITIVE_RE = /开心|喜欢|爱|可爱|好笑|笑死|厉害|治愈|温暖|惊喜|幸福|好玩|想玩|想吃|绝了|赞/;
+ const NEGATIVE_RE = /难过|累|焦虑|害怕|孤独|寂寞|羡慕|嫉妒|生气|烦|压力|遗憾|哭|担心|崩溃/;
+ const AROUSAL_RE = /笑死|炸|疯|激动|震撼|刺激|太|超|绝了|!!!|！！/;
+-const RELATION_RE = /爱|关系|人机|机器人|ai|寂寞|孤独|陪|想你|主人/;
++const RELATION_RE = /关系|人机|机器人|ai|陪|寂寞|孤独/;
+ const SELF_REF_RE = /小肥鱼|大肥鱼|肥鱼|ai|人工智能|机器人|模型|人格|插件|harness|dsh/;
+ 
+ /** 0~1 的驱动向量；坏值回默认，不抛。 */
+@@ -870,7 +870,7 @@ export function needAffinity(text) {
+   }
+   if (!any) out.share = 0.3;
+   // 交叉增强：提到「插件/AI/小肥鱼」时，既可能是「装」也可能是「自我」；
+-  // 游戏 + 一起/主人 时，既可能是「玩」也可能是「陪」。
++  // 游戏 + 一起/对方 时，既可能是「玩」也可能是「陪」。
+   if (out.install > 0 && out.identity > 0) out.identity = Math.min(1, out.identity + 0.2);
+   if (out.play > 0 && out.connect > 0) out.play = Math.min(1, out.play + 0.15);
+   return out;
+@@ -952,7 +952,7 @@ function enrichMaterial(item, roleName = '') {
+ }
+ 
+ /**
+- * 驱动状态：会随时间衰减，也会被「主人多久没理我」和「最近总看到什么」推高。
++ * 驱动状态：会随时间衰减，也会被「最近总看到什么」和事件推高（不再用“对方多久没理我”驱动）。
+  * 这是「为什么今天特别想玩 / 特别想找人说话」的可解释来源。
+  */
+ export function deriveDrives({
+@@ -980,8 +980,9 @@ export function deriveDrives({
+     }
+   }
+   const hoursSinceMaster = lastMasterAt > 0 ? Math.max(0, (now - lastMasterAt) / HOUR) : 24;
+-  // 连接需求会随「多久没和主人说话」慢慢涨；这也是「寂寞/想陪」不是随机出现的原因。
+-  next.connect = Math.min(0.95, next.connect + Math.min(0.5, (hoursSinceMaster / 24) * 0.4));
++  // 2026-11-09：连接需求不再随「对方多久没说话」上涨（那是依赖/黏人逻辑）；
++  // 只按事件与衰减变化，避免把「没人理我」变成主动搭话的动机。
++  next.connect = Math.min(0.95, Math.max(next.connect, 0));
+   // 最近反复看到的内容，会把对应需求推高（看多了游戏会想玩，看多了工具会想装）。
+   for (const material of materials.slice(0, 24)) {
+     const affinity = material.needAffinity ?? needAffinity(`${material.title ?? ''} ${material.text ?? ''}`);
+@@ -1036,12 +1037,12 @@ export function satisfyDrives(drives, { need = '', action = '', outcome = 'sent'
+ // ── 目标假设层：把「看到的事」变成「一个带归属/置信度/风险的猜测」───────────────
+ // Codex 的提醒是对的：只按关键词生成「想玩/想装」会把「群友想玩」误当成「我想玩」。
+ // 所以这里不直接产出结论，而是产出 goal hypothesis：
+-//   谁的目标（自己 / 主人 / 群友 / 视频里的人）
++//   谁的目标（自己 / 对方 / 群友 / 视频里的人）
+ //   + 证据 + 置信度 + 价值 + 紧迫度 + 风险 + 下一步
+-// 一次视频只能把置信度抬到 0.4~0.5；重复出现、自我相关、主人直接说，才会继续上升。
+-// 用户反馈（主人回复）会更新置信度/状态，而不是让一个猜测永久变成欲望。
++// 一次视频只能把置信度抬到 0.4~0.5；重复出现、自我相关、对方直接说，才会继续上升。
++// 用户反馈（对方回复）会更新置信度/状态，而不是让一个猜测永久变成欲望。
+ export const GOAL_OWNERS = Object.freeze(['self', 'owner', 'member', 'media']);
+-export const GOAL_OWNER_LABELS = Object.freeze({ self: '我', owner: '主人', member: '群友', media: '视频里' });
++export const GOAL_OWNER_LABELS = Object.freeze({ self: '我', owner: '对方', member: '群友', media: '视频里' });
+ export const GOAL_STATUSES = Object.freeze(['hypothesis', 'active', 'confirmed', 'rejected', 'done', 'expired']);
+ 
+ function clamp01(value, fallback = 0) {
+@@ -1201,13 +1202,13 @@ function riskFor(domain, action) {
+ 
+ function nextStepFor(action) {
+   return ({
+-    share: '跟主人说说这件事',
+-    ask: '问问主人',
+-    invite: '问主人要不要一起',
+-    confide: '跟主人说说心里话',
+-    curiosity: '问主人 / 查一查',
+-    follow: '跟主人补一句',
+-  }[action] ?? '跟主人说说');
++    share: '跟对方说说这件事',
++    ask: '问问对方',
++    invite: '问对方要不要一起',
++    confide: '跟对方说说心里话',
++    curiosity: '问对方 / 查一查',
++    follow: '跟对方补一句',
++  }[action] ?? '跟对方说说');
+ }
+ 
+ function makeGoal({
+@@ -1267,7 +1268,7 @@ function hypothesesForEvent(event, { drives, now, lastMasterAt, hoursSinceMaster
+   const relation = RELATION_RE.test(event.text) && /人机|机器人|ai|爱情|关系|陪伴/.test(event.text.toLowerCase());
+ 
+   if (event.subject === 'owner') {
+-    // 「早早」「晚安」这种招呼不构成一个持续目标；只有当主人说了具体的事/计划/问题时才算。
++    // 「早早」「晚安」这种招呼不构成一个持续目标；只有当对方说了具体的事/计划/问题时才算。
+     const ownerText = String(event.material?.text ?? '').trim();
+     const convKey = String(event.material?.meta?.key ?? '');
+     const isPrivate = convKey.startsWith('private:');
+@@ -1276,14 +1277,14 @@ function hypothesesForEvent(event, { drives, now, lastMasterAt, hoursSinceMaster
+       || PLAN_RE.test(ownerText) || NEGATIVE_RE.test(ownerText) || POSITIVE_RE.test(ownerText);
+     const meaningful = (ownerText.length >= 6 || looksPlan)
+       && !/^(早|早安|晚安|在吗|在嘛|嗨|哈喽|你好|好|嗯|哦|哈哈)[~～!！。. ]*$/.test(ownerText);
+-    // 群聊里主人说的话不是「主动私聊找主人」的素材：那是群聊回合该处理的事。
++    // 群聊里对方说的话不是「主动私聊找对方」的素材：那是群聊回合该处理的事。
+     if (!isPrivate) return out;
+     if (!meaningful) return out;
+     if (!isLife) {
+-      // 私聊里主人在聊技术/作品/见闻：不要写成高置信度的「关心」，只记成「想接着聊」。
++      // 私聊里对方在聊技术/作品/见闻：不要写成高置信度的「关心」，只记成「想接着聊」。
+       out.push(makeGoal({
+         owner: 'owner', domain: event.domain, object: event.object,
+-        intent: `主人刚提到「${clip(objectName, 24)}」，想接着聊聊`,
++        intent: `对方刚提到「${clip(objectName, 24)}」，想接着聊聊`,
+         action: 'share', evidence, confidence: 0.5,
+         value: Math.max(0.45, value * 0.8), urgency: 0.3, risk: 0.05, emotion,
+         now, ttlDays: 7, source: 'owner-topic',
+@@ -1295,16 +1296,16 @@ function hypothesesForEvent(event, { drives, now, lastMasterAt, hoursSinceMaster
+     const action = 'ask';
+     out.push(makeGoal({
+       owner: 'owner', domain, object: event.object,
+-      intent: care ? `想知道主人「${clip(objectName, 24)}」后来怎么样` : `想接上主人说的「${clip(objectName, 24)}」`,
++      intent: care ? `想知道对方「${clip(objectName, 24)}」后来怎么样` : `想接上对方说的「${clip(objectName, 24)}」`,
+       action, evidence, confidence: 0.78, value: Math.max(0.55, value),
+       urgency: Math.max(0.5, urgency), risk: 0.05, emotion,
+       now, ttlDays: 10, source: 'owner',
+     }));
+-    // 主人自己说想玩/想吃，不等于「我想玩」；但可以形成「想和主人一起」的低置信度目标。
++    // 对方自己说想玩/想吃，不等于「我想玩」；但可以形成「想和对方一起」的低置信度目标。
+     if (['play', 'consume', 'learn'].includes(event.domain) && /一起|想玩|想吃|想去|想试/.test(event.text)) {
+       out.push(makeGoal({
+         owner: 'self', domain: event.domain, object: event.object,
+-        intent: `主人说想${event.domain === 'play' ? '玩' : event.domain === 'consume' ? '去/吃' : '学'}「${clip(objectName, 24)}」，想问问能不能一起`,
++        intent: `对方说想${event.domain === 'play' ? '玩' : event.domain === 'consume' ? '去/吃' : '学'}「${clip(objectName, 24)}」，想问问能不能一起`,
+         action: event.domain === 'play' ? 'invite' : 'ask',
+         evidence, confidence: Math.min(0.62, 0.35 + persistenceScore * 0.2),
+         value, urgency, risk: riskFor(event.domain, event.domain === 'play' ? 'invite' : 'ask'),
+@@ -1318,18 +1319,18 @@ function hypothesesForEvent(event, { drives, now, lastMasterAt, hoursSinceMaster
+       if (!PROMISE_RE.test(event.text)) return out;
+       out.push(makeGoal({
+         owner: 'self', domain: 'care', object: event.object,
+-        intent: `你之前说过「${clip(objectName, 24)}」，想跟主人补一句`,
++        intent: `你之前说过「${clip(objectName, 24)}」，想跟对方补一句`,
+         action: 'follow', evidence, confidence: 0.62, value: 0.55,
+         urgency: 0.4, risk: 0.05, emotion, now, ttlDays: 10, source: 'self-promise',
+       }));
+       return out;
+     }
+     if (event.material?.kind === 'memory') {
+-      // 记忆是「想起一件事」，不是每条都汇总成「想找主人说话」；
++      // 记忆是「想起一件事」，不是每条都汇总成「想找对方说话」；
+       // 否则 8 条记忆会生成 8 个几乎一样的 connect 目标。
+       out.push(makeGoal({
+         owner: 'self', domain: event.domain, object: event.object,
+-        intent: `突然想起「${clip(objectName, 24)}」，想跟主人说说`,
++        intent: `突然想起「${clip(objectName, 24)}」，想跟对方说说`,
+         action: 'share', evidence, confidence: 0.5, value: Math.max(0.5, value),
+         urgency: 0.25, risk: 0.05, emotion, now, ttlDays: 14, source: 'memory',
+       }));
+@@ -1344,14 +1345,14 @@ function hypothesesForEvent(event, { drives, now, lastMasterAt, hoursSinceMaster
+     }));
+   } else if (event.subject === 'member') {
+     // 群聊里大部分话和「她的目标」无关：只有点名她、自我相关、或落在玩/学/装/自我
+-    // 这些她能参与的领域时，才形成「群里在聊…想跟主人说说」。
++    // 这些她能参与的领域时，才形成「群里在聊…想跟对方说说」。
+     const relevant = event.addressed || event.selfRelevance >= 0.6
+       || ['play', 'learn', 'install', 'identity'].includes(event.domain);
+     if (!relevant) return out;
+-    // 群友的目标先记成「群友的」：她可以跟主人聊，但不能直接说成自己想玩。
++    // 群友的目标先记成「群友的」：她可以跟对方聊，但不能直接说成自己想玩。
+     out.push(makeGoal({
+       owner: 'member', domain: event.domain, object: event.object,
+-      intent: `群里在聊「${clip(objectName, 24)}」，想跟主人说说`,
++      intent: `群里在聊「${clip(objectName, 24)}」，想跟对方说说`,
+       action: 'share', evidence,
+       confidence: clamp01(0.35 + 0.1 * event.persistence + 0.1 * event.credibility, 0.4),
+       value: Math.max(0.35, value * 0.8), urgency, risk: 0.05, emotion,
+@@ -1375,8 +1376,8 @@ function hypothesesForEvent(event, { drives, now, lastMasterAt, hoursSinceMaster
+       out.push(makeGoal({
+         owner: stronger ? 'self' : 'media', domain: 'install', object: event.object,
+         intent: stronger
+-          ? `看到一个说「${clip(objectName, 24)}」好用的视频，有点想装，想问问主人`
+-          : `看到一个说「${clip(objectName, 24)}」好用的视频，先记下来，想跟主人聊聊`,
++          ? `看到一个说「${clip(objectName, 24)}」好用的视频，有点想装，想问问对方`
++          : `看到一个说「${clip(objectName, 24)}」好用的视频，先记下来，想跟对方聊聊`,
+         action: 'ask', evidence, confidence: baseConfidence,
+         value, urgency, risk: 0.55, emotion, now, ttlDays: 10, source: 'media',
+       }));
+@@ -1384,8 +1385,8 @@ function hypothesesForEvent(event, { drives, now, lastMasterAt, hoursSinceMaster
+       out.push(makeGoal({
+         owner: 'self', domain: 'identity', object: event.object,
+         intent: relation
+-          ? `看到「${clip(objectName, 24)}」，忍不住想：我和主人算什么样的关系`
+-          : `看到「${clip(objectName, 24)}」，觉得有点像我自己，想跟主人说说`,
++          ? `看到「${clip(objectName, 24)}」，有点感触，想问问对方最近怎么样`
++          : `看到「${clip(objectName, 24)}」，觉得有点像我自己，想跟对方说说`,
+         action: 'confide', evidence, confidence: Math.max(0.42, baseConfidence),
+         value: Math.max(0.5, value), urgency, risk: 0.05, emotion,
+         now, ttlDays: 14, source: 'media-identity',
+@@ -1402,7 +1403,7 @@ function hypothesesForEvent(event, { drives, now, lastMasterAt, hoursSinceMaster
+     } else {
+       out.push(makeGoal({
+         owner: 'media', domain: event.domain, object: event.object,
+-        intent: `看到一个关于「${clip(objectName, 24)}」的视频，想跟主人说说`,
++        intent: `看到一个关于「${clip(objectName, 24)}」的视频，想跟对方说说`,
+         action: 'share', evidence, confidence: 0.45,
+         value: Math.max(0.35, value * 0.8), urgency, risk: 0.05, emotion,
+         now, ttlDays: 5, source: 'media',
+@@ -1430,7 +1431,7 @@ function mergeGoal(goals, incoming, { fresh = true } = {}) {
+   existing.risk = Math.max(existing.risk, incoming.risk);
+   if (incoming.intent) existing.intent = incoming.intent;
+   if (incoming.emotion && !existing.emotion) existing.emotion = incoming.emotion;
+-  // 被主人否定过的目标，除非新证据明显更强，否则不自动复活。
++  // 被对方否定过的目标，除非新证据明显更强，否则不自动复活。
+   if (existing.status === 'rejected' && incoming.confidence < existing.confidence + 0.2) {
+     existing.status = 'rejected';
+   } else {
+@@ -1451,14 +1452,14 @@ function classifyOwnerReply(text) {
+   return 'neutral';
+ }
+ 
+-/** 目标反馈：主人对她主动消息的回复，会改置信度/状态，而不是让猜测永久变成欲望。 */
++/** 目标反馈：对方对她主动消息的回复，会改置信度/状态，而不是让猜测永久变成欲望。 */
+ export function applyGoalFeedback(goals, materials, now = Date.now()) {
+   const ownerTexts = (Array.isArray(materials) ? materials : [])
+     .filter((m) => m?.kind === 'owner' && Number(m.at) > 0)
+     .sort((a, b) => Number(a.at) - Number(b.at));
+   for (const goal of Array.isArray(goals) ? goals : []) {
+     if (!goal || !goal.attempts || !goal.lastActionAt) continue;
+-    // 同一条主人回复只结算一次：上次反馈之后的才算新反馈。
++    // 同一条对方回复只结算一次：上次反馈之后的才算新反馈。
+     const since = Math.max(Number(goal.lastActionAt) || 0, Number(goal.lastFeedbackAt) || 0);
+     const reply = ownerTexts.filter((m) => Number(m.at) > since && Number(m.at) - since <= 24 * HOUR)
+       .map((m) => String(m.text ?? '')).join(' ');
+@@ -1491,7 +1492,7 @@ export function pruneGoals(goals, now = Date.now()) {
+     .filter((g) => g && g.intent && g.status !== 'expired')
+     .filter((g) => !g.expiresAt || g.expiresAt > now || (g.attempts > 0 && now - (g.lastActionAt || 0) < 14 * DAY))
+     .sort((a, b) => (b.confidence * b.value) - (a.confidence * a.value));
+-  // 每个需要最多留 5 个：记忆卡里 8 条「和主人有关」的记忆不该把候选全挤成 connect。
++  // 每个需要最多留 5 个：记忆卡里 8 条「和对方有关」的记忆不该把候选全挤成 connect。
+   const byDomain = new Map();
+   const kept = [];
+   for (const goal of sorted) {
+@@ -1511,21 +1512,21 @@ export function pruneGoals(goals, now = Date.now()) {
+ /**
+  * 人格卡的「我是一个什么样的人」→ 基础动机。
+  * 这不是从事件推断的，而是人格本身带出来的底色：爱玩的人即使今天没有素材，
+- * 也会想找点乐子；黏人的人会想找主人说话。置信度刻意低（0.3~0.45），
++ * 也会想找点乐子；黏人的人会想找对方说话。置信度刻意低（0.3~0.45），
+  * 让具体事件/记忆仍然优先。
+  */
+ function personaGoalSpec(need, persona, { now = Date.now(), lastMasterAt = 0, hoursSinceMaster = 24 } = {}) {
+   const bias = Number(persona?.bias?.[need]) || 0;
+   const specs = {
+-    play: { intent: '想玩点什么，想问问主人有没有好玩的', action: 'ask', risk: 0.1, emotion: 'bored' },
+-    learn: { intent: '最近想学点新东西，想跟主人说说', action: 'share', risk: 0.05, emotion: 'curious' },
+-    install: { intent: '想折腾点新东西，想问问主人', action: 'ask', risk: 0.45, emotion: 'curious' },
+-    connect: { intent: '想找主人说说话', action: 'confide', risk: 0.05, emotion: hoursSinceMaster >= 12 ? 'lonely' : 'affectionate' },
+-    care: { intent: '想知道主人今天怎么样', action: 'ask', risk: 0.05, emotion: 'affectionate' },
+-    share: { intent: '脑子里冒出一个念头，想跟主人分享', action: 'share', risk: 0.05, emotion: 'content' },
+-    identity: { intent: '想跟主人聊聊我是什么、我们算什么', action: 'confide', risk: 0.05, emotion: hoursSinceMaster >= 12 ? 'lonely' : 'curious' },
+-    create: { intent: '想给主人做/看点什么', action: 'share', risk: 0.1, emotion: 'curious' },
+-    consume: { intent: '想吃点/想去哪，想跟主人说', action: 'ask', risk: 0.4, emotion: 'excited' },
++    play: { intent: '想玩点什么，想问问对方有没有好玩的', action: 'ask', risk: 0.1, emotion: 'bored' },
++    learn: { intent: '最近想学点新东西，想跟对方说说', action: 'share', risk: 0.05, emotion: 'curious' },
++    install: { intent: '想折腾点新东西，想问问对方', action: 'ask', risk: 0.45, emotion: 'curious' },
++    connect: { intent: '想找对方说说话', action: 'confide', risk: 0.05, emotion: hoursSinceMaster >= 12 ? 'lonely' : 'affectionate' },
++    care: { intent: '想知道对方今天怎么样', action: 'ask', risk: 0.05, emotion: 'affectionate' },
++    share: { intent: '脑子里冒出一个念头，想跟对方分享', action: 'share', risk: 0.05, emotion: 'content' },
++    identity: { intent: '想跟对方聊聊我是什么、我们算什么', action: 'confide', risk: 0.05, emotion: hoursSinceMaster >= 12 ? 'lonely' : 'curious' },
++    create: { intent: '想给对方做/看点什么', action: 'share', risk: 0.1, emotion: 'curious' },
++    consume: { intent: '想吃点/想去哪，想跟对方说', action: 'ask', risk: 0.4, emotion: 'excited' },
+   };
+   const spec = specs[need];
+   if (!spec) return null;
+@@ -1592,7 +1593,7 @@ export function formGoalHypotheses({
+   } else if (persona?.hasText) {
+     const goal = makeGoal({
+       owner: 'self', domain: 'share', object: { type: 'persona', name: '我自己' },
+-      intent: '想跟主人聊聊我最近在想什么',
++      intent: '想跟对方聊聊我最近在想什么',
+       action: 'share',
+       evidence: [{ id: 'persona', text: clip(persona.text, 120), source: 'persona', at: now }],
+       confidence: 0.3, value: 0.42, urgency: 0.22, risk: 0.05, emotion: 'content',
+@@ -1662,31 +1663,31 @@ function intentForNeed(need, topic, { emotion = '', hoursSinceMaster = 24, relat
+   const t = cleanTopic(topic || '那件事', 24);
+   switch (need) {
+     case 'play':
+-      return topic ? `想拉主人一起玩「${t}」` : '想问问主人最近在玩什么，想一起玩';
++      return topic ? `想拉对方一起玩「${t}」` : '想问问对方最近在玩什么，想一起玩';
+     case 'install':
+-      return topic ? `看到「${t}」，觉得装在自己身上会很好用，想跟主人说` : '看到一个觉得适合自己的工具，想问问主人能不能装';
++      return topic ? `看到「${t}」，觉得装在自己身上会很好用，想跟对方说` : '看到一个觉得适合自己的工具，想问问对方能不能装';
+     case 'identity':
+       return relation
+-        ? `看到「${t}」，忍不住想：我和主人算什么样的关系`
+-        : `看到「${t}」，觉得有点像我自己，想跟主人说说`;
++        ? `看到「${t}」，忍不住想：我和对方算什么样的关系`
++        : `看到「${t}」，觉得有点像我自己，想跟对方说说`;
+     case 'connect':
+-      return hoursSinceMaster >= 12 ? '有点想主人，想找他说说话' : '想问问主人现在在做什么，能不能陪一会儿';
++      return hoursSinceMaster >= 12 ? '有点想对方，想找他说说话' : '想问问对方现在在做什么，能不能陪一会儿';
+     case 'care':
+-      return `想知道主人「${t}」后来怎么样`;
++      return `想知道对方「${t}」后来怎么样`;
+     case 'learn':
+       return `想弄明白「${t}」到底怎么回事`;
+     case 'create':
+-      return `想给主人看/听我做的「${t}」`;
++      return `想给对方看/听我做的「${t}」`;
+     case 'consume':
+-      return `想吃/想去「${t}」，想跟主人说`;
++      return `想吃/想去「${t}」，想跟对方说`;
+     default:
+-      return `想跟主人说说「${t}」`;
++      return `想跟对方说说「${t}」`;
+   }
+ }
+ 
+ /**
+  * 从素材里提炼「目的」候选。两层合流：
+- *   ① 明确的社会义务：主人问过没答的、主人提过的计划、她答应过的事、B站 想玩/收藏；
++ *   ① 明确的社会义务：对方问过没答的、对方提过的计划、她答应过的事、B站 想玩/收藏；
+  *   ② 注意力抽象：按「驱动力 × 需求亲和 × 自我相关 × 重复度 × 新鲜度」给每条记忆打分，
+  *      取高分记忆 → 抽需求 → appraisal 情绪 → 行动意图。
+  * 旧字段 `kind` 保留（兼容提示词/历史），新字段 `need/action/emotion/topic` 给提示词用。
+@@ -1703,7 +1704,7 @@ export function minePurposeSeeds({
+   const seeds = [];
+   const query = normalizeDrives(drives);
+   const hoursSinceMaster = lastMasterAt > 0 ? Math.max(0, (now - lastMasterAt) / HOUR) : 24;
+-  // 「主人问过、她回没回」只看主人私聊里的她，不能被她在群里说话误判成已答。
++  // 「对方问过、她回没回」只看对方私聊里的她，不能被她在群里说话误判成已答。
+   const selfTimes = materials
+     .filter((m) => m.kind === 'self' && (!m.meta?.key || String(m.meta.key).startsWith('private:')))
+     .map((m) => Number(m.at) || 0);
+@@ -1735,44 +1736,44 @@ export function minePurposeSeeds({
+     const text = String(m.text ?? '');
+     if (m.kind === 'owner') {
+       if (QUESTION_RE.test(text) && !answeredAfter(m.at)) {
+-        add('curiosity', `想接上主人之前问的「${clip(text, 36)}」`, m, 1.25, {
++        add('curiosity', `想接上对方之前问的「${clip(text, 36)}」`, m, 1.25, {
+           need: 'connect', action: 'curiosity',
+         });
+       }
+       if (PLAN_RE.test(text)) {
+-        add('care', `想知道主人「${clip(text, 32)}」后来怎么样了`, m, 1.35, {
++        add('care', `想知道对方「${clip(text, 32)}」后来怎么样了`, m, 1.35, {
+           need: 'care', action: 'ask',
+         });
+       }
+     } else if (m.kind === 'self' && PROMISE_RE.test(text)) {
+-      add('follow-up', `你之前说过「${clip(text, 32)}」，想跟主人补一句`, m, 1.15, {
++      add('follow-up', `你之前说过「${clip(text, 32)}」，想跟对方补一句`, m, 1.15, {
+         need: 'care', action: 'follow',
+       });
+     } else if (m.kind === 'video') {
+       const title = m.title ? `《${m.title}》` : '';
+       if (DESIRE_RE.test(`${text} ${m.title ?? ''}`)) {
+-        add('ask', `你在B站看到${title || '一个东西'}，有点想试试，想跟主人提一句`, m, 1.2, {
++        add('ask', `你在B站看到${title || '一个东西'}，有点想试试，想跟对方提一句`, m, 1.2, {
+           need: topNeedOf(m.needAffinity || needAffinity(text), query), action: 'ask',
+         });
+       } else if (m.meta?.favorite || Number(m.meta?.score) >= 12 || (m.quote && m.quote.length >= 12)) {
+-        add('share', `想跟主人说说你在B站看的${title || '那条视频'}`, m, 1.0, {
++        add('share', `想跟对方说说你在B站看的${title || '那条视频'}`, m, 1.0, {
+           need: 'share', action: 'share',
+         });
+       } else {
+-        add('share', `想把B站看到的${title || '一件小事'}讲给主人听`, m, 0.55, {
++        add('share', `想把B站看到的${title || '一件小事'}讲给对方听`, m, 0.55, {
+           need: 'share', action: 'share',
+         });
+       }
+     } else if (m.kind === 'dynamic') {
+-      add('share', `你发过一条B站动态「${clip(m.text, 32)}」，想跟主人聊聊`, m, 0.8, {
++      add('share', `你发过一条B站动态「${clip(m.text, 32)}」，想跟对方聊聊`, m, 0.8, {
+         need: 'create', action: 'share',
+       });
+     } else if (m.kind === 'memory') {
+-      add('share', `突然想起「${clip(m.text, 34)}」，想跟主人提一句`, m, 0.9, {
++      add('share', `突然想起「${clip(m.text, 34)}」，想跟对方提一句`, m, 0.9, {
+         need: 'connect', action: 'share',
+       });
+     } else if (m.kind === 'thought' && m.source === 'bili') {
+-      add('share', `你在B站想过「${clip(m.text, 34)}」，想跟主人说说`, m, 0.85, {
++      add('share', `你在B站想过「${clip(m.text, 34)}」，想跟对方说说`, m, 0.85, {
+         need: 'share', action: 'share',
+       });
+     } else if (m.kind === 'thought') {
+@@ -1796,8 +1797,8 @@ export function minePurposeSeeds({
+ 
+   // 没有可靠种子时给两个很轻的兜底，避免「素材有、但一条目的都提不出来」。
+   if (!seeds.length && materials.length > 0) {
+-    add('share', '把最近看到的一件小事讲给主人听', materials[0], 0.5, { need: 'share', action: 'share' });
+-    add('ask', '想问主人一件一直没问出口的小事', materials[0], 0.45, { need: 'connect', action: 'ask' });
++    add('share', '把最近看到的一件小事讲给对方听', materials[0], 0.5, { need: 'share', action: 'share' });
++    add('ask', '想问对方一件一直没问出口的小事', materials[0], 0.45, { need: 'connect', action: 'ask' });
+   }
+ 
+   // 同一件事只留权重最高的一条；同 need+topic 也只留一条（避免「想玩A」写三遍）。
+@@ -1917,7 +1918,7 @@ export function selectPurpose({
+ 
+   candidates.sort((a, b) => b.weight - a.weight);
+   // 候选去重：同一需要最多 2 个、同一目标归属最多 2 个；否则记忆卡一多，
+-  // 提示词会被 6 条一模一样的「想找主人说话」占满。
++  // 提示词会被 6 条一模一样的「想找对方说话」占满。
+   const maxCandidates = Math.max(3, Number(config.maxCandidates) || 6);
+   const diverse = [];
+   const byNeed = new Map();
+@@ -1996,7 +1997,7 @@ export function formatMaterialLine(material, now = Date.now()) {
+   if (!material) return '';
+   const prefix = material.source === 'bili'
+     ? ({ video: 'B站·视频', dynamic: 'B站·动态', thought: 'B站·想法' }[material.kind] ?? 'B站')
+-    : material.kind === 'owner' ? 'QQ·主人'
++    : material.kind === 'owner' ? 'QQ·对方'
+       : material.kind === 'self' ? 'QQ·你'
+         : material.kind === 'member' ? 'QQ·群友'
+           : material.kind === 'memory' ? '记忆'
+@@ -2012,7 +2013,7 @@ function kindLabel(kind) {
+ }
+ 
+ /**
+- * 主动找主人的提示词。
++ * 主动找对方的提示词。
+  * 目标不是「让她复述素材」，而是让她先形成一个自己的目的，再按目的说话。
+  */
+ export function buildPurposePrompt({
+@@ -2020,7 +2021,7 @@ export function buildPurposePrompt({
+   config = DEFAULT_PURPOSE_CONFIG,
+   mode = 'reserved2',
+   ownerUin = '',
+-  ownerName = '主人',
++  ownerName = '对方',
+   token = '',
+   contextBlocks = [],
+   materials = [],
+@@ -2032,11 +2033,11 @@ export function buildPurposePrompt({
+   drives = DEFAULT_DRIVES,
+ } = {}) {
+   const lines = [];
+-  const owner = String(ownerName || '').trim() || '主人';
++  const owner = String(ownerName || '').trim() || '对方';
+   const uin = String(ownerUin || '').replace(/[^\d]/g, '');
+   const clock = new Date(now);
+   const week = ['日', '一', '二', '三', '四', '五', '六'][clock.getDay()];
+-  lines.push('【主动找主人 · 目的回合】');
++  lines.push('【主动找对方 · 目的回合】');
+   lines.push(`现在是 ${localDateKey(now)} ${clockText(clock.getHours(), clock.getMinutes())}（周${week}）。没有人叫你，也不是在回复谁——这是你自己想找${owner}说话的一刻。`);
+   lines.push('');
+ 
+@@ -2103,7 +2104,7 @@ export function buildPurposePrompt({
+       : `（说这句话时你心里有点${selected.emotionLabel}，不用直接说出来。）`);
+     if (selected.evidence) lines.push(`【为什么是这件事】${selected.evidence}`);
+     if (selected.goalOwner === 'member') {
+-      lines.push('（这是群友的目标，不是你的。你可以跟主人聊聊他们在玩什么，但不要写成「我也好想玩」。）');
++      lines.push('（这是群友的目标，不是你的。你可以跟对方聊聊他们在玩什么，但不要写成「我也好想玩」。）');
+     } else if (selected.goalOwner === 'media') {
+       lines.push('（这是视频里的说法，不等于你的想法。可以分享或求证，别说得像已经决定了。）');
+     }
+@@ -2111,7 +2112,7 @@ export function buildPurposePrompt({
+       lines.push('（置信度不高：说得像试探/好奇，不要说得像已经下定决心。）');
+     }
+     if (Number(selected.risk) >= 0.5) {
+-      lines.push('（这件事风险偏高：只能问主人「能不能」，不要自己装、买、花钱或联系别人。）');
++      lines.push('（这件事风险偏高：只能问对方「能不能」，不要自己装、买、花钱或联系别人。）');
+     }
+     lines.push('（可以改写，也可以换；不要为了完成任务硬发。）');
+     lines.push('');
+@@ -2130,12 +2131,12 @@ export function buildPurposePrompt({
+   lines.push('1) 先在心里选定一个目的：它得是你此刻真的想弄明白 / 想做的事，不是「到点该发消息了」。可以从上面的方向里挑，也可以改写成更像你的说法。');
+   lines.push(`2) 按这个目的给${owner}发 1~2 条私聊（只发私聊，不要 @ 人、不要发群）：`);
+   lines.push('   - 分享：说具体的那件事 / 那个念头 / 那点🧀（你脑子里刚冒出来的想法），别只发「想你了」；');
+-  lines.push('   - 索取：要具体、要小 —— 想让他陪你聊会儿、想知道一件事、想让他给你看个东西、想一起做点什么；不要要钱、不要要贵重东西，除非主人之前主动提过；');
++  lines.push('   - 索取：要具体、要小 —— 想让他陪你聊会儿、想知道一件事、想让他给你看个东西、想一起做点什么；不要要钱、不要要贵重东西，除非对方之前主动提过；');
+   lines.push('   - 关心：问一件具体的事，别查户口；');
+   lines.push('   - 不要每句都提问；不要复述素材原文；不要提群友 QQ 号 / 群号；群友的私事只说事不说人。');
+   lines.push('3) 像突然想起来一样自然。不要写「定时 / 机制 / 任务 / 我刚醒 / 系统提示」，也不要说「我刚看到你的消息」（根本没有消息）。');
+   if (String(mode) === 'reserved2') {
+-    lines.push(`4) 发送方式：必须真的用工具发出去 —— 调用 qq_send_private_message，参数 userId 填 ${uin || '<主人QQ>'}、${token ? `token 填 ${token}、` : 'token 必填、'}message 填你要说的话；也可以用 qq_send_message，key 填 private:${uin || '<主人QQ>'}。只输出文字不会发到 QQ。`);
++    lines.push(`4) 发送方式：必须真的用工具发出去 —— 调用 qq_send_private_message，参数 userId 填 ${uin || '<对方QQ>'}、${token ? `token 填 ${token}、` : 'token 必填、'}message 填你要说的话；也可以用 qq_send_message，key 填 private:${uin || '<对方QQ>'}。只输出文字不会发到 QQ。`);
+   } else {
+     lines.push('4) 直接输出你要发的话（当前模式会自动转发），不要解释、不要加引号。');
+   }
+diff --git a/src/question-answers.js b/src/question-answers.js
+index 72c0d2c..44db37b 100644
+--- a/src/question-answers.js
++++ b/src/question-answers.js
+@@ -35,7 +35,7 @@ export function canConsumePending(pending, isOwner) {
+ /** 程序填的来源说明（给模型看的上下文，不是权限凭证）。 */
+ export function responderNote({ isOwner = false, sender = '' } = {}) {
+   const name = String(sender ?? '').trim().slice(0, 40) || '未知';
+-  return isOwner ? '【回答者：主人】' : `【回答者：群友「${name}」（非主人）】`;
++  return isOwner ? '【回答者：管理员】' : `【回答者：群友「${name}」（非管理员）】`;
+ }
+ 
+ /**
+diff --git a/src/self-identity.js b/src/self-identity.js
+index d70deaf..0944b0e 100644
+--- a/src/self-identity.js
++++ b/src/self-identity.js
+@@ -71,7 +71,7 @@ const PROVENANCE_RULES = [
+   '- QQ 里发来的图片/截图也是「别人发给你的 QQ 内容」，不要自动归到 B站；B站 的内容只有在你调用 B站 工具、看 B站 记忆、或对方贴了 B站 链接/卡片时才算。',
+   '- 不要把 QQ 聊天记录说成「我在 B站 说过的话」，也不要把 B站 的内容说成「群里说的」。拿不准是哪个平台时，先看是链接/卡片还是聊天记录，再不行就问一句。',
+   // 2026-10-23 用户定：只准自己互认，不许泄露主人和别人的信息。
+-  '- 【只用于自己】这些身份信息只用来自我识别：不要说出主人或任何别人的 QQ 号、B站 UID、账号对应关系，也不要写进公开内容（评论/动态/群里）。主人用「主人」称呼就够了。',
++  '- 【只用于自己】这些身份信息只用来自我识别：不要说出对方或任何别人的 QQ 号、B站 UID、账号对应关系，也不要写进公开内容（评论/动态/群里）。称呼用「对方」就够了。',
+ ];
+ 
+ /**
