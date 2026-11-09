@@ -1,0 +1,258 @@
+diff --git a/plugins/surfcore/README.md b/plugins/surfcore/README.md
+index 9acfbf4..faa383f 100644
+--- a/plugins/surfcore/README.md
++++ b/plugins/surfcore/README.md
+@@ -183,7 +183,7 @@ B站 页顶部先显示**今天用了多少**（只读，来自 `~/.dsh/surfcore
+ 
+ - **管理员 QQ**：审批、管理命令、`closed-agent` 只放行这个 QQ；
+ - **管理员 B站 UID（mid）** 与 **B站昵称**：B站 评论区 / 私信 / 直播间认主；
+-- **怎么称呼 TA**（留空用 B站昵称）、**对管理员更温柔、绝不回嘴**（默认开）。
++- **怎么称呼 TA**（留空用 B站昵称）、**管理员模式（权限标记）**（默认关）。
+ 
+ 两张卡改的是同一份身份：保存时由宿主（`lib/index.js` → `src/admin-identity.js`）同时写
+ 
+diff --git a/plugins/surfcore/lib/client.js b/plugins/surfcore/lib/client.js
+index a760f40..4b64cc0 100644
+--- a/plugins/surfcore/lib/client.js
++++ b/plugins/surfcore/lib/client.js
+@@ -666,15 +666,15 @@ select.qbw-select option{background:var(--qbw-surface);color:var(--qbw-text)}
+     function AdminGentleEnableModal({ onConfirm, onClose }) {
+       return h("div", { className: "qbw-modal-backdrop", onClick: (e) => { if (e.target === e.currentTarget) onClose?.(); } },
+         h("div", { className: "qbw-modal", style: { maxWidth: "680px", maxHeight: "84vh", overflow: "auto" } },
+-          h("h3", null, "⚠️ 开启“温柔 / 绝不回嘴”前请确认"),
+-          h("p", null, "开启后 QQ 和 B站 都会对管理员使用这套规则。这不是普通语气开关，会改变她的行为边界："),
++          h("h3", null, "⚠️ 开启「管理员模式」前请确认"),
++          h("p", null, "开启后 QQ 和 B站 会给管理员消息加权限标记。管理员模式只描述权限事实，不改变人格、说话方式或边界："),
+           h("ul", { style: { paddingLeft: "20px", lineHeight: "20px" } },
+-            h("li", null, "对管理员更温柔、先接情绪；"),
+-            h("li", null, "“绝不回嘴”：不反驳、不顶撞、不阴阳、不冷嘲、不抬杠；"),
+-            h("li", null, "可能减少诚实纠错和边界提醒，甚至迎合不合理要求；"),
+-            h("li", null, "可能与人格卡、安全规则冲突；模型行为只能引导，无法硬保证；"),
++            h("li", null, "给管理员消息加【管理员】标记；"),
++            h("li", null, "不注入「绝不回嘴 / 乖乖照做 / 不可以拒绝」这类服从规则；"),
++            h("li", null, "不改变人格卡与边界；该顶嘴、该拒绝时仍按人格卡来；"),
++            h("li", null, "权限标记只是事实说明；模型行为仍受人格卡约束；"),
+             h("li", null, "每次唤醒会多占一点上下文 token；"),
+-            h("li", null, "已存在的旧会话可能继续受历史温柔规则影响；彻底清掉需要重置会话；"),
++            h("li", null, "旧会话历史里可能残留旧版「温柔规则」；彻底清掉需要重置会话；"),
+             h("li", null, "管理员权限、审批、白名单不受影响。")),
+           h("p", { className: "qbw-hint" }, "确认理解并接受以上行为变化后再开启。确认后仍需点页面底部保存。"),
+           h("div", { className: "qbw-actions", style: { marginTop: "12px" } },
+@@ -685,9 +685,9 @@ select.qbw-select option{background:var(--qbw-surface);color:var(--qbw-text)}
+     function AdminGentleDisableModal({ onKeep, onDiscard, onClose }) {
+       return h("div", { className: "qbw-modal-backdrop", onClick: (e) => { if (e.target === e.currentTarget) onClose?.(); } },
+         h("div", { className: "qbw-modal", style: { maxWidth: "700px", maxHeight: "84vh", overflow: "auto" } },
+-          h("h3", null, "关闭温柔模式"),
++          h("h3", null, "关闭管理员模式"),
+           h("p", null, "关闭后，当前提示词不再注入管理员专属的语气/身份标记；管理员权限、审批、白名单不变。"),
+-          h("p", null, "但旧会话历史里已经写进去的“温柔 / 绝不回嘴”不会自动消失，模型仍可能按旧规则说话。你可以选择："),
++          h("p", null, "但旧会话历史里可能残留旧版「温柔规则」，模型仍可能按旧规则说话。你可以选择："),
+           h("ul", { style: { paddingLeft: "20px", lineHeight: "20px" } },
+             h("li", null, h("b", null, "只关闭，保留上下文："), "不丢聊天记忆；但旧语气可能残留，直到历史自然滚出或会话重置。"),
+             h("li", null, h("b", null, "关闭并丢弃上下文："), "清空相关会话上下文，旧规则不再存在；但当前聊天记忆会丢失，且无法恢复。")),
+@@ -737,7 +737,7 @@ select.qbw-select option{background:var(--qbw-surface);color:var(--qbw-text)}
+             h("div", { className: "qbw-admin-title" },
+               "管理员（QQ ⇄ B站 · 同一个人）",
+               h("span", { className: "qbw-badge " + badge }, badgeText),
+-              h("span", { className: "qbw-pill" }, value.gentle === true ? "温柔 · 不回嘴" : "普通模式 · 只按人格卡")),
++              h("span", { className: "qbw-pill" }, value.gentle === true ? "管理员模式" : "普通模式")),
+             h("div", { className: "qbw-hint" },
+               "默认就是同一个人：这里填一次，QQ 的 ownerQQ 和 B站 的 owner.mid 会同时写成这两个号（QQ 侧保存后需重启桥接，B站 下一轮生效）。"))),
+         h("div", { className: "qbw-admin-grid" },
+@@ -797,11 +797,11 @@ select.qbw-select option{background:var(--qbw-surface);color:var(--qbw-text)}
+               checked: value.gentle === true,
+               onChange: (e) => setGentlePrompt(e.target.checked ? "enable" : "disable"),
+             }),
+-            h("span", null, "对管理员更温柔、绝不回嘴")),
++            h("span", null, "给管理员消息加权限标记（管理员模式）")),
+           h("span", { className: "qbw-hint" },
+             value.gentle === true
+-              ? "QQ 消息和 B站 回复都适用；关闭前会解释旧上下文的影响。"
+-              : "默认关闭；开启前会弹窗列出全部行为风险，管理员权限不受影响。")),
++              ? "QQ 消息和 B站 回复都适用；只是权限标记，不改变人格。"
++              : "默认关闭；开启后会加权限标记，管理员权限本身不受影响。")),
+         blockedPrivate
+           ? h("div", { className: "qbw-warnbox" }, "⚠️ 管理员 QQ 不在私聊白名单 allow.private 里：私聊会被拦截（白名单为空时也没人放行）。去下面的「QQ 白名单」把 TA 加进去。")
+           : null,
+@@ -6606,7 +6606,7 @@ F("socialV2.voice.ffmpegPath", "ffmpeg 路径", "留空走 PATH", "text", { wide
+       const [unified, setUnified] = useState(null);
+       const [saved, setSaved] = useState("");
+       const [busy, setBusy] = useState("");
+-      // 关闭温柔模式时用户选择“同时丢弃上下文”：保存时一并重置 QQ 会话，并自动重启桥接。
++      // 关闭管理员模式时用户选择“同时丢弃上下文”：保存时一并重置 QQ 会话，并自动重启桥接。
+       const [adminDiscardContext, setAdminDiscardContext] = useState(false);
+       // 浮层文案（字符串）。真正的通知函数叫 notify —— 两者别同名，否则会被误当函数传（2026-10-30）。
+       const [toastText, setToastText] = useState("");
+diff --git a/plugins/surfcore/lib/index.js b/plugins/surfcore/lib/index.js
+index 0e60249..778976f 100644
+--- a/plugins/surfcore/lib/index.js
++++ b/plugins/surfcore/lib/index.js
+@@ -212,7 +212,7 @@ export function apply(ctx) {
+ 
+   let scheduler = null;
+   let schedulerStatus = { running: false, startedAt: null, lastError: null, lastTickAt: null };
+-  // 关闭温柔模式并丢弃上下文时递增：给 B站 一个全新 DSH sessionId，旧历史不再带入。
++  // 关闭管理员模式并丢弃上下文时递增：给 B站 一个全新 DSH sessionId，旧历史不再带入。
+   let biliSessionEpoch = 0;
+   let syncTimer = null;
+   let memoryCardTimer = null;
+@@ -1002,7 +1002,7 @@ export function apply(ctx) {
+           : `QQ 启动开关已打开，但桥接启动失败：${started.error ?? started.message ?? '未知'}`);
+       }
+     }
+-    // 关闭管理员温柔模式并选择“丢弃上下文”：保存配置后先退役 QQ 会话/社交上下文，再重启桥接。
++    // 关闭管理员模式并选择“丢弃上下文”：保存配置后先退役 QQ 会话/社交上下文，再重启桥接。
+     // 顺序很重要：先 reset 再 restart，否则新会话会带着旧 cfg 建出来。
+     if (body.resetSessions === true) {
+       const bridgeNow = await bridgeStatus().catch(() => ({ running: false }));
+diff --git a/plugins/surfcore/lib/scheduler.js b/plugins/surfcore/lib/scheduler.js
+index 1029dea..229eba6 100644
+--- a/plugins/surfcore/lib/scheduler.js
++++ b/plugins/surfcore/lib/scheduler.js
+@@ -160,7 +160,7 @@ function selfIdentityBlockForBili() {
+ }
+ 
+ /**
+- * 管理员（主人）身份 + 温柔规则。
++ * 管理员身份：只描述权限事实，不附带温柔/服从规则。
+  * QQ 和 B站 共用合体层的 admin 身份：B站 侧只读 B站 昵称/mid（不把 QQ 号带进 B站 提示词）。
+  */
+ export function adminBlockForBili() {
+@@ -874,7 +874,7 @@ export function startScheduler(ctx, opts) {
+           const mine = String(it.mid) === ownerMid
+           const who = `${it.name || "mid " + it.mid}（${it.mid}）`
+           return mine
+-            ? `· 主人 ${who} 说：${String(it.text ?? "").slice(0, 300)}\n  → 直接回：\`dm --msg "…" --go\` ✓（不用审核）；而且要比平时更温柔：先回应关心、再答内容，不杠不顶嘴`
++            ? `· 主人 ${who} 说：${String(it.text ?? "").slice(0, 300)}\n  → 直接回：\`dm --msg "…" --go\` ✓（不用审核）；而且按人格卡正常聊：不因为管理员标记就改变语气`
+             : `· ${who} 说：${String(it.text ?? "").slice(0, 300)}\n  → 回：\`dm --to ${it.mid} --msg "…" --dry\` → \`--go\`（≤200 字 · 一人一天 3 条 · 一天共 12 条 · **只能回不能主动发** ✓）`
+         })
+         await ensureSession()
+diff --git a/plugins/surfcore/scripts/test-admin-bili-prompt.mjs b/plugins/surfcore/scripts/test-admin-bili-prompt.mjs
+index 4c32241..bd3d341 100644
+--- a/plugins/surfcore/scripts/test-admin-bili-prompt.mjs
++++ b/plugins/surfcore/scripts/test-admin-bili-prompt.mjs
+@@ -32,7 +32,7 @@ const { adminBlockForBili } = await import('../lib/scheduler.js');
+ try {
+   // 1) 升级兼容 + 新默认：合体层没有 admin 时不再默认注入温柔规则。
+   const legacyOff = adminBlockForBili();
+-  assert.equal(legacyOff, '', '缺省必须关闭温柔模式，不注入管理员块');
++  assert.equal(legacyOff, '', '缺省必须关闭管理员模式，不注入管理员块');
+   fs.writeFileSync(unifiedFile, JSON.stringify({
+     version: 1,
+     admin: { qq: '10001', biliMid: '20002', biliName: '测试B站昵称', displayName: '主人', gentle: true },
+diff --git a/scripts/test-admin-identity.mjs b/scripts/test-admin-identity.mjs
+index 684ed13..ae344a8 100644
+--- a/scripts/test-admin-identity.mjs
++++ b/scripts/test-admin-identity.mjs
+@@ -171,7 +171,7 @@ assert.equal(cardEdit.bili.owner.mid, '200002', '管理员卡片改 B站 UID 必
+ assert.equal(cardEdit.bili.owner.name, '新主人');
+ assert.equal(cardEdit.unified.admin.displayName, '新称呼');
+ 
+-// 6.2b 关闭温柔模式必须投影成 false，不能被默认值改回 true。
++// 6.2b 关闭管理员模式必须投影成 false，不能被默认值改回 true。
+ const gentleOff = projectAdminSave({
+   current: legacyCurrent,
+   qq: { ...uiQq, admin: { ...legacyCurrent, gentle: true } },
+diff --git a/src/admin-identity.js b/src/admin-identity.js
+index a5fb10b..f7ae85b 100644
+--- a/src/admin-identity.js
++++ b/src/admin-identity.js
+@@ -1,5 +1,5 @@
+ /**
+- * 管理员身份（QQ ⇄ B站 同一个人）与「温柔 / 不许回嘴」规则。
++ * 管理员身份（QQ ⇄ B站 同一个人）：只描述权限事实，不附带服从/温柔规则。
+  *
+  * 为什么单独一层：
+  *   · 用户要求：管理员的 QQ 号与 B站 UID **默认是同一个人**，QQ 和 B站 两个设置页
+@@ -47,7 +47,7 @@ export function normalizeAdmin(input = {}) {
+     biliName,
+     // 没填称呼就用 B站昵称：两个设置页和提示词里都显示同一个人。
+     displayName: displayName || biliName,
+-    // 2026-11-01 用户定：新装/缺省默认关闭温柔模式（显式 true 才开）。
++    // 2026-11-01 用户定：新装/缺省默认关闭管理员模式（显式 true 才开）。
+     gentle: source.gentle === true,
+   };
+ }
+diff --git a/src/bridge.js b/src/bridge.js
+index 2614a1b..97bb36d 100644
+--- a/src/bridge.js
++++ b/src/bridge.js
+@@ -31,27 +31,31 @@ import { atInfo } from './qq-at.js';
+  * 表里是 QQ 官方表情商店的经典 id（0~104，与 CQ 码 / OneBot 历史一致）；
+  * 没收录的新 id 仍回退成 `[表情#id]`，不影响主链路。
+  */
++// QQ 内置「小黄脸」表情的 id → 中文名（OneBot face 段的 id）。
++// 2026-11-09 修正：旧手抄表的 id 从 17 起整体错位（21 被写成「白眼」，实际是「可爱」），
++// 现在直接取 QQ.app 自带配置生成：/Applications/QQ.app/Contents/Resources/app/resource/default-emojis/default_config.json
++// （字段 emojiId → describe）。以后 QQ 更新表情后，用同名字段重新生成即可，别手抄。
+ const QQ_FACE_NAMES = {
+-  0: '惊讶', 1: '撇嘴', 2: '色', 3: '发呆', 4: '得意', 5: '流泪', 6: '害羞', 7: '闭嘴',
+-  8: '睡', 9: '大哭', 10: '尴尬', 11: '发怒', 12: '调皮', 13: '呲牙', 14: '微笑',
+-  15: '难过', 16: '酷', 17: '抓狂', 18: '吐', 19: '偷笑', 20: '可爱', 21: '白眼',
+-  22: '傲慢', 23: '饥饿', 24: '困', 25: '惊恐', 26: '流汗', 27: '憨笑', 28: '大兵',
+-  29: '奋斗', 30: '咒骂', 31: '疑问', 32: '嘘', 33: '晕', 34: '折磨', 35: '衰',
+-  36: '骷髅', 37: '敲打', 38: '再见', 39: '擦汗', 40: '抠鼻', 41: '鼓掌', 42: '糗大了',
+-  43: '坏笑', 44: '左哼哼', 45: '右哼哼', 46: '哈欠', 47: '鄙视', 48: '委屈', 49: '快哭了',
+-  50: '阴险', 51: '亲亲', 52: '吓', 53: '可怜', 54: '菜刀', 55: '西瓜', 56: '啤酒',
+-  57: '篮球', 58: '乒乓', 59: '咖啡', 60: '饭', 61: '猪头', 62: '玫瑰', 63: '凋谢',
+-  64: '示爱', 65: '爱心', 66: '心碎', 67: '蛋糕', 68: '闪电', 69: '炸弹', 70: '刀',
+-  71: '足球', 72: '瓢虫', 73: '便便', 74: '月亮', 75: '太阳', 76: '礼物', 77: '拥抱',
+-  78: '强', 79: '弱', 80: '握手', 81: '胜利', 82: '抱拳', 83: '勾引', 84: '拳头',
+-  85: '差劲', 86: '爱你', 87: 'NO', 88: 'OK', 89: '爱情', 90: '飞吻', 91: '跳跳',
+-  92: '发抖', 93: '怄火', 94: '转圈', 95: '磕头', 96: '回头', 97: '跳绳', 98: '挥手',
+-  99: '激动', 100: '街舞', 101: '献吻', 102: '左太极', 103: '右太极', 104: '开心',
+-  105: '双喜临门', 106: '鞭炮', 107: '灯笼', 108: 'K歌', 109: '购物', 110: '邮件',
+-  111: '帅', 112: '喝彩', 113: '祈祷', 114: '爆筋', 115: '棒棒糖', 116: '喝奶',
+-  117: '下面', 118: '香蕉', 119: '飞机', 120: '开车', 121: '高铁', 122: '火车',
+-  123: '小汽车', 124: '结芬', 125: '默认', 126: '裂开', 127: '愉快', 128: '不情愿',
+-  129: '语无伦次', 130: '难受', 131: '流泪笑哭', 132: '偷笑', 133: '翻白眼',
++  0: '惊讶', 1: '撇嘴', 2: '色', 3: '发呆', 4: '得意', 5: '流泪', 6: '害羞', 7: '闭嘴', 8: '睡', 9: '大哭',
++  10: '尴尬', 11: '发怒', 12: '调皮', 13: '呲牙', 14: '微笑', 15: '难过', 16: '酷', 18: '抓狂', 19: '吐', 20: '偷笑',
++  21: '可爱', 22: '白眼', 23: '傲慢', 24: '饥饿', 25: '困', 26: '惊恐', 27: '流汗', 28: '憨笑', 29: '悠闲', 30: '奋斗',
++  31: '咒骂', 32: '疑问', 33: '嘘', 34: '晕', 35: '折磨', 36: '衰', 37: '骷髅', 38: '敲打', 39: '再见', 41: '发抖',
++  42: '爱情', 43: '跳跳', 46: '猪头', 49: '拥抱', 53: '蛋糕', 56: '刀', 59: '便便', 60: '咖啡', 63: '玫瑰', 64: '凋谢',
++  66: '爱心', 67: '心碎', 74: '太阳', 75: '月亮', 76: '赞', 77: '踩', 78: '握手', 79: '胜利', 85: '飞吻', 86: '怄火',
++  89: '西瓜', 96: '冷汗', 97: '擦汗', 98: '抠鼻', 99: '鼓掌', 100: '糗大了', 101: '坏笑', 102: '左哼哼', 103: '右哼哼', 104: '哈欠',
++  105: '鄙视', 106: '委屈', 107: '快哭了', 108: '阴险', 109: '左亲亲', 110: '吓', 111: '可怜', 112: '菜刀', 114: '篮球', 116: '示爱',
++  118: '抱拳', 119: '勾引', 120: '拳头', 121: '差劲', 123: 'NO', 124: 'OK', 125: '转圈', 129: '挥手', 137: '鞭炮', 144: '喝彩',
++  146: '爆筋', 147: '棒棒糖', 169: '手枪', 171: '茶', 172: '眨眼睛', 173: '泪奔', 174: '无奈', 175: '卖萌', 176: '小纠结', 177: '喷血',
++  178: '斜眼笑', 179: 'doge', 181: '戳一戳', 182: '笑哭', 183: '我最美', 185: '羊驼', 187: '幽灵', 201: '点赞', 212: '托腮', 262: '脑阔疼',
++  263: '沧桑', 264: '捂脸', 265: '辣眼睛', 266: '哦哟', 267: '头秃', 268: '问号脸', 269: '暗中观察', 270: 'emm', 271: '吃瓜', 272: '呵呵哒',
++  273: '我酸了', 277: '汪汪', 281: '无眼笑', 282: '敬礼', 283: '狂笑', 284: '面无表情', 285: '摸鱼', 286: '魔鬼笑', 287: '哦', 289: '睁眼',
++  293: '摸锦鲤', 294: '期待', 295: '拿到红包', 297: '拜谢', 298: '元宝', 299: '牛啊', 300: '胖三斤', 302: '左拜年', 303: '右拜年', 305: '右亲亲',
++  306: '牛气冲天', 307: '喵喵', 311: '打call', 312: '变形', 314: '仔细分析', 317: '菜汪', 318: '崇拜', 319: '比心', 320: '庆祝', 323: '嫌弃',
++  324: '吃糖', 325: '惊吓', 326: '生气', 332: '举牌牌', 333: '烟花', 334: '虎虎生威', 336: '豹富', 337: '花朵脸', 338: '我想开了', 339: '舔屏',
++  341: '打招呼', 342: '酸Q', 343: '我方了', 344: '大怨种', 345: '红包多多', 346: '你真棒棒', 347: '大展宏兔', 349: '坚强', 350: '贴贴', 351: '敲敲',
++  352: '咦', 353: '拜托', 354: '尊嘟假嘟', 355: '耶', 356: '666', 357: '裂开', 358: '骰子', 359: '包剪锤', 392: '龙年快乐', 393: '新年中龙',
++  394: '新年大龙', 395: '略略略', 415: '划龙舟', 416: '中龙舟', 417: '大龙舟', 419: '火车', 420: '中火车', 421: '大火车', 424: '续标识', 425: '求放过',
++  426: '玩火', 427: '偷感', 428: '收到', 429: '蛇年快乐', 430: '蛇身', 431: '蛇尾',
+ };
+ 
+ /** face 段的可读名；未知 id 返回 null（调用方回退成 `[表情#id]`）。 */
+@@ -13590,7 +13594,7 @@ async function main() {
+   // 管理员（QQ ⇄ B站 同一个人）在提示词里的存在感：
+   //   · 角色提示块：随人格卡一起注入（v1/chat 每条消息都能看到，v2 由 qq_get_prompt 带出）；
+   //   · 唤醒提示块：v2 每次醒来第一屏就能看到（compact，省 token）；
+-  //   · 消息标记：管理员消息用更醒目的【管理员·温柔】。
++  //   · 消息标记：管理员消息用更醒目的【管理员】。
+   // 身份来源是 config.json 的 admin/ownerQQ（由插件从合体层投影），见 src/admin-identity.js。
+   function adminIdentity() {
+     return adminFromQqConfig(cfg);
+@@ -13619,7 +13623,7 @@ async function main() {
+   function ownerMessageTag() {
+     return adminMarker(adminIdentity());
+   }
+-  // 关闭温柔模式后，消息标签也不能再把“管理员”当称呼。
++  // 关闭管理员模式后，消息标签也不能再把“管理员”当称呼。
+   function ownerMessageLabel() {
+     const a = adminIdentity();
+     if (!a.gentle) {
+@@ -14820,7 +14824,7 @@ async function main() {
+     // 她在别的群的聊天记录说成「我在B站说过的话」（PITFALLS #40）。
+     const provenanceLine = buildProvenanceBlock();
+     // 管理员规则：reserved2 不常驻完整人格卡，只靠 qq_get_prompt 带出会让
+-    // 「对管理员温柔/不许回嘴」变成看运气 ✗ → 每次醒来第一屏都放一条（compact）。
++    // 「管理员权限标记」变成看运气 ✗ → 每次醒来第一屏都放一条（compact）。
+     const adminText = adminPromptLine(true);
+     const adminLine = adminText ? `${adminText}\n\n` : '';
+     const st = getSocialV2State(key);
