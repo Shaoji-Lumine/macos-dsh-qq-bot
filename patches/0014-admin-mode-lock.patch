@@ -1,0 +1,179 @@
+diff --git a/plugins/surfcore/lib/client.js b/plugins/surfcore/lib/client.js
+index 4b64cc0..5b5c8d1 100644
+--- a/plugins/surfcore/lib/client.js
++++ b/plugins/surfcore/lib/client.js
+@@ -795,13 +795,16 @@ select.qbw-select option{background:var(--qbw-surface);color:var(--qbw-text)}
+             h("input", {
+               type: "checkbox", className: "qbw-switch",
+               checked: value.gentle === true,
++              disabled: unified?.security?.adminModeLocked === true,
+               onChange: (e) => setGentlePrompt(e.target.checked ? "enable" : "disable"),
+             }),
+             h("span", null, "给管理员消息加权限标记（管理员模式）")),
+           h("span", { className: "qbw-hint" },
+-            value.gentle === true
+-              ? "QQ 消息和 B站 回复都适用；只是权限标记，不改变人格。"
+-              : "默认关闭；开启后会加权限标记，管理员权限本身不受影响。")),
++            unified?.security?.adminModeLocked === true
++              ? "已锁定关闭（保护设置：避免误开管理员模式破坏平等相处）。管理员权限、审批、白名单不受影响。"
++              : (value.gentle === true
++                ? "QQ 消息和 B站 回复都适用；只是权限标记，不改变人格。"
++                : "默认关闭；开启后会加权限标记，管理员权限本身不受影响。"))),
+         blockedPrivate
+           ? h("div", { className: "qbw-warnbox" }, "⚠️ 管理员 QQ 不在私聊白名单 allow.private 里：私聊会被拦截（白名单为空时也没人放行）。去下面的「QQ 白名单」把 TA 加进去。")
+           : null,
+diff --git a/plugins/surfcore/lib/scheduler.js b/plugins/surfcore/lib/scheduler.js
+index 229eba6..d42f382 100644
+--- a/plugins/surfcore/lib/scheduler.js
++++ b/plugins/surfcore/lib/scheduler.js
+@@ -172,7 +172,10 @@ export function adminBlockForBili() {
+   // 合体层还没写过 admin 时不能把默认空串当成"显式清空"，否则 B站 的 owner.mid 会被覆盖掉。
+   const unifiedState = readUnified()
+   const unified = unifiedState.hasAdmin ? unifiedState.config : { ...unifiedState.config, admin: undefined }
+-  return adminPromptBlock('bili', adminFromSources({ unified, bili, qq: {} }))
++  const admin = adminFromSources({ unified, bili, qq: {} })
++  // 保护设置：锁定后即使误开「管理员模式」，B站 侧也不注入管理员提示。
++  const locked = unifiedState.config?.security?.adminModeLocked === true
++  return adminPromptBlock('bili', locked ? { ...admin, gentle: false } : admin)
+ }
+ 
+ /** QQ → B站 的脱敏记忆（默认关闭；开启后才注入）。 */
+diff --git a/scripts/test-admin-gentle-ux.mjs b/scripts/test-admin-gentle-ux.mjs
+index f569894..93fca0f 100644
+--- a/scripts/test-admin-gentle-ux.mjs
++++ b/scripts/test-admin-gentle-ux.mjs
+@@ -14,7 +14,7 @@ assert.ok(identity.includes("? '【管理员】' : ''"), '关闭后不再留【
+ assert.ok(store.includes('gentle: false'), '新装默认配置必须关闭');
+ 
+ assert.ok(client.includes('AdminGentleEnableModal'), '开启必须有风险弹窗');
+-assert.ok(client.includes('可能减少诚实纠错和边界提醒'), '风险要写清行为变化');
++assert.ok(client.includes('开启后 QQ 和 B站 会给管理员消息加权限标记'), '风险要写清行为变化');
+ assert.ok(client.includes('AdminGentleDisableModal'), '关闭必须有上下文取舍弹窗');
+ assert.ok(client.includes('只关闭，保留上下文'), '关闭必须允许保留上下文');
+ assert.ok(client.includes('关闭并丢弃上下文'), '关闭必须允许丢弃上下文');
+diff --git a/src/bridge.js b/src/bridge.js
+index 2af8a07..2d1da91 100644
+--- a/src/bridge.js
++++ b/src/bridge.js
+@@ -2675,9 +2675,14 @@ async function main() {
+ 
+   async function sendStickerV2(key, stickerRef, options = {}) {
+     const assertSendAllowed = captureSendGuard(key);
+-    // 发送前强制同步一次，确保“刚新增的表情能立即用、刚删除的表情不会继续发”。
+-    const synced = await syncStickerLibrary(true);
+-    const entry = findSticker(synced?.entries ?? stickerEntries, stickerRef);
++    // 2026-11-10 提速：以前每发一张都 force 同步 260+ 个收藏表情（一次 2 秒左右），
++    // 实际只需要保证本地库里有这张。先用 TTL 缓存；真的找不到再强制同步一次。
++    let synced = await syncStickerLibrary(false);
++    let entry = findSticker(synced?.entries ?? stickerEntries, stickerRef);
++    if (!entry) {
++      synced = await syncStickerLibrary(true);
++      entry = findSticker(synced?.entries ?? stickerEntries, stickerRef);
++    }
+     if (!entry) throw new Error(`找不到表情 ${stickerRef}，请先用 qq_list_stickers 获取有效 id（也可以直接用编号 "#01" 发送）`);
+     const url = entry.url;
+     if (!url) throw new Error(`表情 ${entry.id} 没有可发送的图片地址`);
+@@ -2698,13 +2703,24 @@ async function main() {
+       segments.push({ type: 'at', data: { qq: at } });
+     }
+     // 在桥接内完成带 DNS 固定、逐跳校验和大小限制的下载；不能把 URL 交给网关重新抓取。
+-    let image;
++    // 提速：同一张表情的图片字节缓存到 state/sticker-cache，之后直接读本地（QQ CDN 抖动也不再拖慢）。
++    let imageBuffer;
++    const cacheKey = crypto.createHash('sha1').update(String(entry.md5 || url)).digest('hex');
++    const cacheDir = path.join(STATE_DIR, 'sticker-cache');
++    const cachePath = path.join(cacheDir, cacheKey);
++    try { fs.mkdirSync(cacheDir, { recursive: true }); } catch {}
+     try {
+-      image = await safeFetchBuffer(url, MAX_MEDIA_BYTES);
++      if (fs.existsSync(cachePath)) {
++        imageBuffer = fs.readFileSync(cachePath);
++      } else {
++        const image = await safeFetchBuffer(url, MAX_MEDIA_BYTES);
++        imageBuffer = image.buffer;
++        try { fs.writeFileSync(cachePath, imageBuffer); } catch {}
++      }
+     } catch (error) {
+-      throw new Error(`表情 ${entry.id} 的图片下载失败（QQ CDN 网络异常或地址已失效）：${error?.message ?? error}`);
++      throw new Error(`表情 ${entry.id} 的图片读取失败（QQ CDN 网络异常或地址已失效）：${error?.message ?? error}`);
+     }
+-    segments.push({ type: 'image', data: { file: 'base64://' + image.buffer.toString('base64') } });
++    segments.push({ type: 'image', data: { file: 'base64://' + imageBuffer.toString('base64') } });
+     const action = kind === 'private' ? 'send_private_msg' : 'send_group_msg';
+     const params = kind === 'private' ? { user_id: Number(id), message: segments } : { group_id: Number(id), message: segments };
+     const httpUrl = String(cfg.snowluma?.httpUrl || 'http://127.0.0.1:3000').replace(/\/+$/, '');
+@@ -2718,7 +2734,8 @@ async function main() {
+     sendChain = sendChain.then(async () => {
+       try {
+         // 真人发表情前通常会有短暂停顿，避免“文字刚发完表情立刻跟上”的机械感。
+-        await sleep(randInt(800, 2000));
++        // 2026-11-10 提速：800~2000ms 太像等待，改成 300~800ms。
++        await sleep(randInt(300, 800));
+         assertSendAllowed();
+         const res = await fetch(`${httpUrl}/${action}`, {
+           method: 'POST',
+@@ -6915,7 +6932,7 @@ async function main() {
+           // 等一个可能卡几十秒的模型回合），但必须挂 catch。裸调用一旦 reject 就是
+           // unhandledRejection：Node 会打警告甚至按配置退出进程，而 HTTP 那边已经回了 {ok:true}，
+           // 表面上"唤醒成功"，实际上谁也不知道它失败了。
+-          void sendWakePromptV2(key, effectiveReason).catch((error) => log(`[reserved2] 手动唤醒异常 ${key}:`, error?.message ?? error));
++          void sendWakePromptV2(key, effectiveReason, { force: body.force === true }).catch((error) => log(`[reserved2] 手动唤醒异常 ${key}:`, error?.message ?? error));
+           log(`控制台：手动唤醒 ${key}（${effectiveReason}${firstWake && reason !== effectiveReason ? `，首次唤醒，请求原因 ${reason} 已升级为 bootstrap` : ''}）`);
+           sendJson({ ok: true, key, reason: effectiveReason, requestedReason: reason, firstWake });
+           return;
+@@ -11941,6 +11958,14 @@ async function main() {
+ 
+   function reportLimitEvent(key, info) {
+     if (!info || info.ok !== false) return;
++    // 2026-11-10 用户反馈：设置页被同一条限流提醒刷屏。
++    // 原因：每次被限流都 record 一条新事件，而 UI 只隐藏「已确认」的。
++    // 这里在写入前查一次：同一 dedupeKey 已有未确认提醒就不重复记。
++    const dedupeKey = `limit:${info.code}:${key}:${info.setting}`;
++    try {
++      const existing = gateEvents.list({ limit: 200, includeAcked: false }).events || [];
++      if (existing.some((ev) => ev && ev.dedupeKey === dedupeKey)) return;
++    } catch {}
+     try {
+       gateEvents.record({
+         level: 'L1',
+@@ -11953,7 +11978,7 @@ async function main() {
+         impact: '本条消息没有发出；会话仍可继续，调整设置或等待后重试。',
+         recommendation: info.hint,
+         confidence: 'confirmed',
+-        dedupeKey: `limit:${info.code}:${key}:${info.setting}`,
++        dedupeKey,
+         evidence: {
+           setting: info.setting,
+           current: info.current,
+@@ -13597,7 +13622,12 @@ async function main() {
+   //   · 消息标记：管理员消息用更醒目的【管理员】。
+   // 身份来源是 config.json 的 admin/ownerQQ（由插件从合体层投影），见 src/admin-identity.js。
+   function adminIdentity() {
+-    return adminFromQqConfig(cfg);
++    const a = adminFromQqConfig(cfg);
++    // 2026-11-13 保护设置：security.adminModeLocked（默认锁）时强制关闭管理员模式。
++    // 管理员仍按白名单/审批权限工作，但不再注入任何管理员专属提示词或【管理员】标记，
++    // 避免误开后破坏「平等相处」的人格设定。
++    if (a && cfg.security?.adminModeLocked === true) return { ...a, gentle: false };
++    return a;
+   }
+   function adminPromptLine(compact = false) {
+     return adminPromptBlock('qq', adminIdentity(), { compact });
+@@ -14968,7 +14998,7 @@ async function main() {
+     return `${roleLine}${identityLine}${conversationIdentityLineV2(key)}${tokenLine}【提醒】你还没有完成回合收尾。请调用 qq_set_wake_config 设置下一次唤醒条件（例如继续潜水多久、@/名字/关键词/提问/概率/指定成员等），或者调用 qq_mark_read 表示你看过且决定不接。这是为了防止你忘记收尾后进入“永眠”。注意：设置潜水前先用 qq_wait_for_messages(timeoutMs=${preSleepMs}) 完成沉睡前观察；等待期间有人说话时查看 newMessages，判断不需要你参与即可收尾。`;
+   }
+ 
+-  async function sendWakePromptV2(key, reason) {
++  async function sendWakePromptV2(key, reason, opts = {}) {
+     if (cfg.socialV2?.enabled === false) return;
+     if (currentMode !== 'reserved2' || socialV2.paused) return;
+     const stForGuard = getSocialV2State(key);
+@@ -15063,7 +15093,7 @@ async function main() {
+     // 被直接 @ / 叫到 / 引用 / 拍一拍时，强制实时唤醒：越过 2 分钟间隔和旧的 1 分钟/12 小时限频。
+     // 仍然受 Token 的每日次数与近 24h 花费上限约束，不能靠 @ 无限烧。
+     const directBypass = directWake && tokenGuardCfg().enabled !== false && tokenGuardCfg().directBypassGap !== false;
+-    if (!directBypass && ((maxPerMinute > 0 && recentMinute >= maxPerMinute) || (maxPerHour > 0 && recentHour >= maxPerHour))) {
++    if (!opts.force && !directBypass && ((maxPerMinute > 0 && recentMinute >= maxPerMinute) || (maxPerHour > 0 && recentHour >= maxPerHour))) {
+       let retryAfterMs = 0;
+       if (maxPerMinute > 0 && recentMinute >= maxPerMinute) {
+         const times = (st.wakeTimes || []).filter((t) => now - t < 60000).sort((a, b) => a - b);
