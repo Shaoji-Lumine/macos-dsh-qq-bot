@@ -104,10 +104,10 @@ index cee966c..5b4ca86 100644
              ...(allResult.items).map((it) => h("div", { className: "qbw-kv", key: `all-${it.id}` },
                h("span", null, `${it.ok ? "✓" : (it.optional ? "⚠️" : "✗")} ${it.label}`),
 diff --git a/plugins/surfcore/lib/index.js b/plugins/surfcore/lib/index.js
-index 778976f..6bdf514 100644
+index 778976f..aa6ed6e 100644
 --- a/plugins/surfcore/lib/index.js
 +++ b/plugins/surfcore/lib/index.js
-@@ -2798,6 +2798,114 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
+@@ -2798,6 +2798,120 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
      return { ok: items.every((x) => x.ok), items, status };
    }
  
@@ -153,13 +153,19 @@ index 778976f..6bdf514 100644
 +    };
 +
 +    // B站：读本地凭证并问一次 nav（过期会返回 ok=false）。
++    // 2026-11-17：B站 是可选服务，检查最多等 3 秒，避免网络慢时把「一键启动」卡住（用户体感“点了没反应”）。
 +    let biliOk = false; let biliDetail = '';
 +    try {
-+      const v = await verifyStoredCredentials('fish');
++      const v = await Promise.race([
++        verifyStoredCredentials('fish'),
++        new Promise((resolve) => setTimeout(() => resolve({ ok: false, timeout: true }), 3000)),
++      ]);
 +      biliOk = v?.ok === true;
-+      biliDetail = biliOk ? `B站 已登录${v?.name ? `（${v.name}）` : ''}` : (v?.hint || v?.error || 'B站 登录已过期');
++      biliDetail = biliOk
++        ? `B站 已登录${v?.name ? `（${v.name}）` : ''}`
++        : (v?.timeout ? 'B站 登录检查超时（可选，不影响启动）' : (v?.hint || v?.error || 'B站 登录已过期'));
 +    } catch (error) {
-+      biliDetail = `B站 状态读取失败：${String(error?.message ?? error).slice(0, 80)}`;
++      biliDetail = `B站 状态读取失败（可选）：${String(error?.message ?? error).slice(0, 80)}`;
 +    }
 +    checks.bili = {
 +      ok: biliOk,
@@ -222,7 +228,7 @@ index 778976f..6bdf514 100644
    async function handleBridge(req, res) {
      if (req.method === 'GET') { json(res, 200, { ok: true, status: await bridgeStatus() }); return; }
      const body = JSON.parse(await readBody(req) || '{}');
-@@ -3710,6 +3818,8 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
+@@ -3710,6 +3824,8 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
        return;
      }
      if (pathname === `${API_PREFIX}/diagnostics`) { await handleDiagnostics(req, res); return; }
