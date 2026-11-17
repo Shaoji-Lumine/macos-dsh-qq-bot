@@ -1,0 +1,213 @@
+diff --git a/plugins/surfcore/lib/client.js b/plugins/surfcore/lib/client.js
+index cee966c..7ad77cf 100644
+--- a/plugins/surfcore/lib/client.js
++++ b/plugins/surfcore/lib/client.js
+@@ -2105,6 +2105,9 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
+       // 统一由概览页这个按钮显式启动 QQ（含 SnowLuma）/ 桥接 / B站生物钟 / 桌宠 / 语音。
+       const [allBusy, setAllBusy] = useState(false);
+       const [allResult, setAllResult] = useState(null);
++      // 启动前自检（2026-11-17）：逐项检查 DSH/QQ/B站/桌宠/语音，坏的项自动打开登录页。
++      const [preflight, setPreflight] = useState(null);
++      const [preflightBusy, setPreflightBusy] = useState(false);
+       const runEverything = async (mode) => {
+         setAllBusy(mode);
+         setLaunchErr(null);
+@@ -2130,6 +2133,37 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
+         } finally { setAllBusy(false); }
+       };
+ 
++
++      // 启动前自检 + 自动打开登录页：QQ 需要扫码就开扫码页，B站 过期就开 B站 扫码；DSH 断开提示重启。
++      const runPreflightThenStart = async () => {
++        setPreflightBusy(true);
++        try {
++          const pf = await api("/preflight");
++          setPreflight(pf);
++          const blocking = Array.isArray(pf.blocking) ? pf.blocking : [];
++          for (const item of blocking) {
++            try {
++              if (item.type === "qq-qr" || item.type === "launch-qq") {
++                await api("/qq/qr-open", { method: "POST", body: {} });
++              } else if (item.type === "bili-qr") {
++                await api("/bili/qr/start", { method: "POST", body: { target: "fish" } });
++              } else if (item.type === "start-pet") {
++                await api("/bridge", { method: "POST", body: { action: "start-selected", components: ["pet"] } });
++              } else if (item.type === "start-voice") {
++                await api("/bridge", { method: "POST", body: { action: "start-selected", components: ["voice"], voicePack: voiceBranch } });
++              }
++            } catch (e) { toast(`自动处理 ${item.label} 失败：${e.message}`); }
++          }
++          const optionalBad = Object.values(pf.checks ?? {}).filter((c) => c && !c.ok && c.optional === true);
++          if (blocking.length) toast(`自检发现 ${blocking.length} 项必需服务需要处理，已自动打开对应页面`);
++          else if (optionalBad.length) toast(`✓ QQ 自检通过；可选服务未配置：${optionalBad.map((c) => c.label).join("、")}`);
++          else toast("✓ 自检通过，开始启动全部服务");
++          await runEverything("start");
++        } catch (e) {
++          toast(`✗ 自检失败：${e.message}`);
++        } finally { setPreflightBusy(false); }
++      };
++
+       const muteLimit = async (ev) => {
+         try {
+           const code = ev.reason?.code || ev.event;
+@@ -2151,11 +2185,17 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
+           h("div", { className: "qbw-hint", style: { marginBottom: "8px" } },
+             "打开 DSH 不会自动启动任何服务；点下面按钮一次性启动：QQ（含 SnowLuma 二维码）、QQ 桥接、B站生物钟、桌宠、语音。"),
+           h("div", { className: "qbw-actions" },
+-            h(Btn, { onClick: () => runEverything("start"), disabled: !!busy || !!allBusy },
+-              allBusy === "start" ? "启动中…" : "🚀 一键启动全部服务"),
++            h(Btn, { onClick: () => runPreflightThenStart(), disabled: !!busy || !!allBusy || preflightBusy },
++              preflightBusy ? "自检中…" : "🚀 一键启动全部服务（先自检）"),
++            h(Btn, { kind: "qbw-btn3", onClick: async () => { try { setPreflight(await api("/preflight")); } catch (e) { toast(`✗ 自检失败：${e.message}`); } } }, "只自检"),
+             h(Btn, { kind: "qbw-btn2", onClick: () => runEverything("stop"), disabled: !!busy || !!allBusy || !bridge.running },
+               allBusy === "stop" ? "停止中…" : "一键停止全部"),
+             h(Btn, { kind: "qbw-btn3", onClick: () => act("status"), disabled: !!busy || !!allBusy }, "刷新状态")),
++          preflight ? h("div", { style: { marginTop: "6px" } },
++            h("div", { className: "qbw-hint" }, "启动前自检："),
++            ...Object.entries(preflight.checks ?? {}).map(([id, c]) => h("div", { className: "qbw-kv", key: `pf-${id}` },
++              h("span", null, `${c.ok ? "✓" : "✗"} ${c.label}`),
++              h("span", null, `${c.detail || ""}${c.action ? `　→ ${c.action.label}` : ""}`)))) : null,
+           (allResult?.items ?? []).length ? h("div", { style: { marginTop: "6px" } },
+             ...(allResult.items).map((it) => h("div", { className: "qbw-kv", key: `all-${it.id}` },
+               h("span", null, `${it.ok ? "✓" : (it.optional ? "⚠️" : "✗")} ${it.label}`),
+diff --git a/plugins/surfcore/lib/index.js b/plugins/surfcore/lib/index.js
+index 778976f..6bdf514 100644
+--- a/plugins/surfcore/lib/index.js
++++ b/plugins/surfcore/lib/index.js
+@@ -2798,6 +2798,114 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
+     return { ok: items.every((x) => x.ok), items, status };
+   }
+ 
++  /**
++   * 启动前自检（2026-11-17 用户要求）：
++   * 一键启动前逐项检查 DSH / QQ / 桥接 / B站 / 桌宠 / 语音；
++   * 每项返回 { ok, state, detail, action }，action 是 UI 可以直接执行的修复动作。
++   */
++  async function buildPreflight() {
++    const bridge = await bridgeStatus().catch((error) => ({ ok: false, running: false, error: String(error?.message ?? error) }));
++    const onebot = (await portOpen(3000).catch(() => false)) || (await portOpen(3001).catch(() => false));
++    const napcat = await portOpen(Number(readQqConfig().config?.snowluma?.napcatWebuiPort) || 6099).catch(() => false);
++    const snow = bridge?.snowluma ?? {};
++    const checks = {};
++
++    const dshOk = bridge?.dshReady === true;
++    checks.dsh = {
++      ok: dshOk,
++      optional: true,
++      state: dshOk ? 'online' : 'unreachable',
++      label: 'DSH 连接',
++      detail: dshOk ? '桥接已连上 DSH 事件流' : '桥接连不上 DSH（事件流断开）',
++      action: dshOk ? null : { type: 'restart-dsh', label: '重启 DSH' },
++    };
++
++    const qqOnline = Boolean(bridge?.running && onebot && snow.connected && snow.accountOnline !== false);
++    let qqState = 'not-running';
++    let qqDetail = '';
++    if (qqOnline) { qqState = 'online'; qqDetail = 'QQ 已登录，OneBot 在线'; }
++    else if (onebot && snow.connected) { qqState = 'bridge-only'; qqDetail = 'OneBot 在，但账号状态异常'; }
++    else if (napcat && !onebot) { qqState = 'login-needed'; qqDetail = 'QQ 在登录页，需要扫码'; }
++    else if (!bridge?.running) { qqState = 'bridge-down'; qqDetail = 'QQ 桥接没在跑'; }
++    else { qqState = 'not-running'; qqDetail = 'QQ/NapCat 没在运行'; }
++    checks.qq = {
++      ok: qqOnline,
++      state: qqState,
++      label: 'QQ（含 SnowLuma）',
++      detail: qqDetail,
++      action: qqOnline ? null
++        : (qqState === 'login-needed'
++          ? { type: 'qq-qr', label: '打开扫码登录页' }
++          : { type: 'launch-qq', label: '启动 QQ 并打开登录页' }),
++    };
++
++    // B站：读本地凭证并问一次 nav（过期会返回 ok=false）。
++    let biliOk = false; let biliDetail = '';
++    try {
++      const v = await verifyStoredCredentials('fish');
++      biliOk = v?.ok === true;
++      biliDetail = biliOk ? `B站 已登录${v?.name ? `（${v.name}）` : ''}` : (v?.hint || v?.error || 'B站 登录已过期');
++    } catch (error) {
++      biliDetail = `B站 状态读取失败：${String(error?.message ?? error).slice(0, 80)}`;
++    }
++    checks.bili = {
++      ok: biliOk,
++      optional: true,
++      state: biliOk ? 'online' : 'login-needed',
++      label: 'B站（可选）',
++      detail: biliDetail,
++      action: biliOk ? null : { type: 'bili-qr', label: '打开 B站 扫码页' },
++    };
++
++    const pet = petService.status();
++    checks.pet = {
++      ok: Boolean(pet.running),
++      optional: true,
++      state: pet.running ? 'running' : (pet.installed ? 'installed' : 'not-installed'),
++      label: '桌宠',
++      detail: pet.running ? '运行中' : (pet.installed ? '已安装，未运行' : '还没安装'),
++      action: pet.running || !pet.installed ? null : { type: 'start-pet', label: '启动桌宠' },
++    };
++
++    let voice = { ok: false, running: false, packs: [] };
++    if (bridge?.running) voice = await voicePacksSnapshot().catch(() => voice);
++    const installedVoice = (voice.packs ?? []).filter((p) => p.installed).map((p) => p.id);
++    checks.voice = {
++      ok: Boolean(voice.running),
++      optional: true,
++      state: voice.running ? 'running' : (installedVoice.length ? 'installed' : 'not-installed'),
++      label: '语音',
++      detail: voice.running ? '运行中' : (installedVoice.length ? `已安装 ${installedVoice.join('/')}，未运行` : '还没安装语音包'),
++      action: voice.running || !installedVoice.length ? null : { type: 'start-voice', label: '启动语音' },
++    };
++
++    // 2026-11-17 用户确认：只有 QQ 是必需项；DSH/桌宠/B站/语音全部可选（提示，不拦启动）。
++    const blocking = Object.entries(checks)
++      .filter(([, c]) => !c.ok && c.action && c.optional !== true)
++      .map(([id, c]) => ({ id, label: c.label, ...c.action }));
++    return { ok: blocking.length === 0, checks, blocking };
++  }
++
++  async function handlePreflight(req, res) {
++    try {
++      json(res, 200, { ok: true, ...(await buildPreflight()) });
++    } catch (error) {
++      json(res, 500, { ok: false, error: String(error?.message ?? error) });
++    }
++  }
++
++  /** 打开 QQ 扫码页：QQ 没起就先拉起来，再把免 token 扫码页打开。 */
++  async function handleQqQrOpen(req, res) {
++    try {
++      const result = await launchSnowLuma();
++      const url = result?.webui || ensureQrStandaloneServer() || '';
++      if (url) openLocalUrl(url);
++      json(res, 200, { ok: result?.ok !== false, url, message: result?.message || '' });
++    } catch (error) {
++      json(res, 500, { ok: false, error: String(error?.message ?? error) });
++    }
++  }
++
+   async function handleBridge(req, res) {
+     if (req.method === 'GET') { json(res, 200, { ok: true, status: await bridgeStatus() }); return; }
+     const body = JSON.parse(await readBody(req) || '{}');
+@@ -3710,6 +3818,8 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
+       return;
+     }
+     if (pathname === `${API_PREFIX}/diagnostics`) { await handleDiagnostics(req, res); return; }
++    if (pathname === `${API_PREFIX}/preflight`) { await handlePreflight(req, res); return; }
++    if (pathname === `${API_PREFIX}/qq/qr-open` && req.method === 'POST') { await handleQqQrOpen(req, res); return; }
+     if (pathname === `${API_PREFIX}/bridge`) { await handleBridge(req, res); return; }
+     if (pathname.startsWith(`${API_PREFIX}/purpose`)) { await handlePurpose(req, res, url); return; }
+     if (pathname.startsWith(`${API_PREFIX}/voice`)) { await handleVoice(req, res, url); return; }
+diff --git a/src/mcp-snowluma-safe.js b/src/mcp-snowluma-safe.js
+index f36977a..f797aa0 100644
+--- a/src/mcp-snowluma-safe.js
++++ b/src/mcp-snowluma-safe.js
+@@ -1382,7 +1382,7 @@ if (true) {
+ if (cfg.socialV2?.tools?.getSelfImage !== false) {
+   server.tool(
+     'qq_get_self_image',
+-    '查看你自己的默认 Q 版形象图片（DeepSeek 小鲸鱼形象）。当你被问“你长什么样/发张自拍/你是什么形象”时，可以调用这个工具看自己的样子；返回的图片会直接进入你的视觉上下文。',
++    '查看你自己的形象图片（蓝发、鲸鱼发夹、白色围裙；图片取自角色目录 assets/deepseek娘.png）。当你被问“你长什么样/发张自拍/你是什么形象”时，调用它看自己的样子；返回的图片会直接进入你的视觉上下文。',
+     {
+       key: z.string().describe('会话 key，格式 group:群号 或 private:QQ号'),
+       token: z.string().describe('会话令牌（见唤醒提示中的【会话令牌】）')
