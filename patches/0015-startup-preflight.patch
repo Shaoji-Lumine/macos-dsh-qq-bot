@@ -1,18 +1,70 @@
 diff --git a/plugins/surfcore/lib/client.js b/plugins/surfcore/lib/client.js
-index cee966c..5b4ca86 100644
+index cee966c..45348ba 100644
 --- a/plugins/surfcore/lib/client.js
 +++ b/plugins/surfcore/lib/client.js
-@@ -2105,6 +2105,9 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
+@@ -663,6 +663,50 @@ select.qbw-select option{background:var(--qbw-surface);color:var(--qbw-text)}
+             h(Btn, { kind: "qbw-btn2", onClick: onClose }, "关闭"))));
+     }
+ 
++    function QrLoginModal({ onClose, onLoggedIn }) {
++      const [status, setStatus] = useState({ loggedIn: false, napcat: false });
++      const [refreshBusy, setRefreshBusy] = useState(false);
++      const [tick, setTick] = useState(0);
++      useEffect(() => {
++        let alive = true;
++        const poll = async () => {
++          try {
++            const st = await api("/qq/qr-status");
++            if (!alive) return;
++            setStatus(st);
++            if (st?.loggedIn) onLoggedIn?.();
++          } catch (e) {}
++        };
++        poll();
++        const t1 = setInterval(poll, 2500);
++        const t2 = setInterval(() => setTick((n) => n + 1), 3000);
++        return () => { alive = false; clearInterval(t1); clearInterval(t2); };
++      }, []);
++      const refresh = async () => {
++        setRefreshBusy(true);
++        try {
++          const r = await api("/qq/qr-refresh", { method: "POST", body: {} });
++          if (r?.loggedIn) onLoggedIn?.();
++        } catch (e) {} finally { setRefreshBusy(false); }
++      };
++      return h("div", { className: "qbw-modal-backdrop", onClick: (e) => { if (e.target === e.currentTarget) onClose?.(); } },
++        h("div", { className: "qbw-modal", style: { maxWidth: "460px", textAlign: "center" } },
++          h("h3", null, status.loggedIn ? "✅ QQ 已登录" : "QQ 扫码登录"),
++          h("p", { className: "qbw-hint" },
++            status.loggedIn ? "登录成功，本弹窗即将关闭。" : "用手机 QQ 扫下面的二维码；每 3 秒自动刷新。"),
++          h("div", { style: { background: "#fff", padding: "12px", borderRadius: "12px", display: "inline-block", margin: "8px 0" } },
++            h("img", {
++              src: `/dsh-surfcore/api/qq/qr-image?t=${tick}`,
++              alt: "QQ 登录二维码",
++              style: { width: "320px", height: "320px", imageRendering: "pixelated", display: "block" },
++            })),
++          h("div", { className: "qbw-hint" },
++            status.loggedIn ? "" : (status.napcat ? "二维码过期可点「刷新二维码」" : "QQ 还没启动：点「刷新二维码」会拉起 QQ 并生成新码")),
++          h("div", { className: "qbw-actions", style: { justifyContent: "center", marginTop: "8px" } },
++            h(Btn, { onClick: refresh, disabled: refreshBusy }, refreshBusy ? "刷新中…" : "刷新二维码"),
++            h(Btn, { kind: "qbw-btn2", onClick: onClose }, "关闭"))));
++    }
++
+     function AdminGentleEnableModal({ onConfirm, onClose }) {
+       return h("div", { className: "qbw-modal-backdrop", onClick: (e) => { if (e.target === e.currentTarget) onClose?.(); } },
+         h("div", { className: "qbw-modal", style: { maxWidth: "680px", maxHeight: "84vh", overflow: "auto" } },
+@@ -2105,6 +2149,10 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
        // 统一由概览页这个按钮显式启动 QQ（含 SnowLuma）/ 桥接 / B站生物钟 / 桌宠 / 语音。
        const [allBusy, setAllBusy] = useState(false);
        const [allResult, setAllResult] = useState(null);
 +      // 启动前自检（2026-11-17）：逐项检查 DSH/QQ/B站/桌宠/语音，坏的项自动打开登录页。
 +      const [preflight, setPreflight] = useState(null);
 +      const [preflightBusy, setPreflightBusy] = useState(false);
++      const [qrOpen, setQrOpen] = useState(false);
        const runEverything = async (mode) => {
          setAllBusy(mode);
          setLaunchErr(null);
-@@ -2130,6 +2133,64 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
+@@ -2130,6 +2178,67 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
          } finally { setAllBusy(false); }
        };
  
@@ -21,7 +73,10 @@ index cee966c..5b4ca86 100644
 +      const applyPreflightAction = async (action) => {
 +        if (!action) return null;
 +        if (action.type === "qq-qr" || action.type === "launch-qq") {
-+          return api("/qq/qr-open", { method: "POST", body: {} });
++          // 内置在 DSH 里显示二维码，不再跳外部浏览器。
++          setQrOpen(true);
++          try { await api("/qq/qr-refresh", { method: "POST", body: {} }); } catch (e) {}
++          return { ok: true, url: "DSH 内置扫码弹窗" };
 +        }
 +        if (action.type === "bili-qr") {
 +          return api("/bili/qr/start", { method: "POST", body: { target: "fish" } });
@@ -77,7 +132,7 @@ index cee966c..5b4ca86 100644
        const muteLimit = async (ev) => {
          try {
            const code = ev.reason?.code || ev.event;
-@@ -2151,11 +2212,23 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
+@@ -2151,17 +2260,38 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
            h("div", { className: "qbw-hint", style: { marginBottom: "8px" } },
              "打开 DSH 不会自动启动任何服务；点下面按钮一次性启动：QQ（含 SnowLuma 二维码）、QQ 桥接、B站生物钟、桌宠、语音。"),
            h("div", { className: "qbw-actions" },
@@ -103,11 +158,26 @@ index cee966c..5b4ca86 100644
            (allResult?.items ?? []).length ? h("div", { style: { marginTop: "6px" } },
              ...(allResult.items).map((it) => h("div", { className: "qbw-kv", key: `all-${it.id}` },
                h("span", null, `${it.ok ? "✓" : (it.optional ? "⚠️" : "✗")} ${it.label}`),
+               h("span", null, it.ok ? (it.message || (allResult?._mode === "stop" ? "已停止" : "已启动")) : `${it.error || "失败"}${it.hint ? `；${it.hint}` : ""}`)))) : null,
+           launchErr ? h("div", { className: "qbw-err", style: { marginTop: "6px" } },
+             `${launchErr.message}`, launchErr.hint ? h("div", { className: "qbw-hint" }, `建议：${launchErr.hint}`) : null) : null),
++        qrOpen ? h(QrLoginModal, {
++          onClose: () => setQrOpen(false),
++          onLoggedIn: async () => {
++            setQrOpen(false);
++            toast("✓ QQ 已登录");
++            try { setPreflight(await api("/preflight")); } catch (e) {}
++            await reload?.();
++          },
++        }) : null,
+         h(LimitReportCard, { events: limitEvents, goTab, onAck: ackGate, onMute: muteLimit }),
+         // 今日唤醒额度用完 = 它不回消息的最常见原因；以前只在 state/bridge.log 里写一行。
+         (() => {
 diff --git a/plugins/surfcore/lib/index.js b/plugins/surfcore/lib/index.js
-index 778976f..aa6ed6e 100644
+index 778976f..8c17aed 100644
 --- a/plugins/surfcore/lib/index.js
 +++ b/plugins/surfcore/lib/index.js
-@@ -2798,6 +2798,120 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
+@@ -2798,6 +2798,165 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
      return { ok: items.every((x) => x.ok), items, status };
    }
  
@@ -205,6 +275,51 @@ index 778976f..aa6ed6e 100644
 +    return { ok: blocking.length === 0, checks, blocking };
 +  }
 +
++  /** DSH 内置扫码：直接返回 NapCat 写的二维码 PNG（同源，不进外部浏览器）。 */
++  async function handleQqQrImage(req, res) {
++    try {
++      const f = napcatQrCachePath();
++      if (!f || !fs.existsSync(f)) {
++        res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
++        res.end('还没有二维码：请先启动 QQ');
++        return;
++      }
++      const buf = fs.readFileSync(f);
++      res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
++      res.end(buf);
++    } catch (error) {
++      res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
++      res.end(String(error?.message ?? error));
++    }
++  }
++
++  async function handleQqQrStatus(req, res) {
++    try {
++      const loggedIn = await portOpen(3000).catch(() => false);
++      const napcat = await portOpen(6099).catch(() => false);
++      json(res, 200, { ok: true, loggedIn: loggedIn === true, napcat: napcat === true });
++    } catch (error) {
++      json(res, 500, { ok: false, error: String(error?.message ?? error) });
++    }
++  }
++
++  /** 二维码过期时重启 QQ 生成新码（只在用户点「刷新二维码」时手动触发）。 */
++  async function handleQqQrRefresh(req, res) {
++    try {
++      if (await portOpen(3000).catch(() => false)) { json(res, 200, { ok: true, loggedIn: true }); return; }
++      try { spawn('pkill', ['-f', 'QQ.app/Contents/MacOS/QQ'], { stdio: 'ignore' }); } catch {}
++      await new Promise((r) => setTimeout(r, 4000));
++      const launched = await launchSnowLuma({ silent: true }).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
++      for (let i = 0; i < 30; i += 1) {
++        await new Promise((r) => setTimeout(r, 1000));
++        if (await portOpen(6099).catch(() => false)) break;
++      }
++      json(res, 200, { ok: true, message: launched?.message || '已重启 QQ，等待新二维码', loggedIn: await portOpen(3000).catch(() => false) });
++    } catch (error) {
++      json(res, 500, { ok: false, error: String(error?.message ?? error) });
++    }
++  }
++
 +  async function handlePreflight(req, res) {
 +    try {
 +      json(res, 200, { ok: true, ...(await buildPreflight()) });
@@ -228,10 +343,13 @@ index 778976f..aa6ed6e 100644
    async function handleBridge(req, res) {
      if (req.method === 'GET') { json(res, 200, { ok: true, status: await bridgeStatus() }); return; }
      const body = JSON.parse(await readBody(req) || '{}');
-@@ -3710,6 +3824,8 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
+@@ -3710,6 +3869,11 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { ${writeOut('$
        return;
      }
      if (pathname === `${API_PREFIX}/diagnostics`) { await handleDiagnostics(req, res); return; }
++    if (pathname === `${API_PREFIX}/qq/qr-image`) { await handleQqQrImage(req, res); return; }
++    if (pathname === `${API_PREFIX}/qq/qr-status`) { await handleQqQrStatus(req, res); return; }
++    if (pathname === `${API_PREFIX}/qq/qr-refresh` && req.method === 'POST') { await handleQqQrRefresh(req, res); return; }
 +    if (pathname === `${API_PREFIX}/preflight`) { await handlePreflight(req, res); return; }
 +    if (pathname === `${API_PREFIX}/qq/qr-open` && req.method === 'POST') { await handleQqQrOpen(req, res); return; }
      if (pathname === `${API_PREFIX}/bridge`) { await handleBridge(req, res); return; }
