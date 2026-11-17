@@ -1,5 +1,5 @@
 diff --git a/plugins/surfcore/lib/client.js b/plugins/surfcore/lib/client.js
-index cee966c..7ad77cf 100644
+index cee966c..5b4ca86 100644
 --- a/plugins/surfcore/lib/client.js
 +++ b/plugins/surfcore/lib/client.js
 @@ -2105,6 +2105,9 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
@@ -12,10 +12,46 @@ index cee966c..7ad77cf 100644
        const runEverything = async (mode) => {
          setAllBusy(mode);
          setLaunchErr(null);
-@@ -2130,6 +2133,37 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
+@@ -2130,6 +2133,64 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
          } finally { setAllBusy(false); }
        };
  
++
++      // 执行自检给出的一键修复动作（登录页/启动组件）。
++      const applyPreflightAction = async (action) => {
++        if (!action) return null;
++        if (action.type === "qq-qr" || action.type === "launch-qq") {
++          return api("/qq/qr-open", { method: "POST", body: {} });
++        }
++        if (action.type === "bili-qr") {
++          return api("/bili/qr/start", { method: "POST", body: { target: "fish" } });
++        }
++        if (action.type === "start-pet") {
++          return api("/bridge", { method: "POST", body: { action: "start-selected", components: ["pet"] } });
++        }
++        if (action.type === "start-voice") {
++          return api("/bridge", { method: "POST", body: { action: "start-selected", components: ["voice"], voicePack: voiceBranch } });
++        }
++        if (action.type === "restart-dsh") {
++          throw new Error("需要手动重启 DSH（Cmd+Q 再打开）");
++        }
++        return null;
++      };
++      // 点某一项的「登录/修复」按钮：执行 → 等 1 秒 → 重新自检刷新状态。
++      const fixPreflightItem = async (action, label) => {
++        if (!action) return;
++        setPreflightBusy(true);
++        try {
++          const r = await applyPreflightAction(action);
++          const url = r?.url ? `（${r.url}）` : "";
++          toast(`✓ 已执行：${label}${url}`);
++          await new Promise((res) => setTimeout(res, 1200));
++          setPreflight(await api("/preflight"));
++          await reload?.();
++        } catch (e) {
++          toast(`✗ ${label} 失败：${e.message}`);
++        } finally { setPreflightBusy(false); }
++      };
 +
 +      // 启动前自检 + 自动打开登录页：QQ 需要扫码就开扫码页，B站 过期就开 B站 扫码；DSH 断开提示重启。
 +      const runPreflightThenStart = async () => {
@@ -25,17 +61,8 @@ index cee966c..7ad77cf 100644
 +          setPreflight(pf);
 +          const blocking = Array.isArray(pf.blocking) ? pf.blocking : [];
 +          for (const item of blocking) {
-+            try {
-+              if (item.type === "qq-qr" || item.type === "launch-qq") {
-+                await api("/qq/qr-open", { method: "POST", body: {} });
-+              } else if (item.type === "bili-qr") {
-+                await api("/bili/qr/start", { method: "POST", body: { target: "fish" } });
-+              } else if (item.type === "start-pet") {
-+                await api("/bridge", { method: "POST", body: { action: "start-selected", components: ["pet"] } });
-+              } else if (item.type === "start-voice") {
-+                await api("/bridge", { method: "POST", body: { action: "start-selected", components: ["voice"], voicePack: voiceBranch } });
-+              }
-+            } catch (e) { toast(`自动处理 ${item.label} 失败：${e.message}`); }
++            try { await applyPreflightAction(item); }
++            catch (e) { toast(`自动处理 ${item.label} 失败：${e.message}`); }
 +          }
 +          const optionalBad = Object.values(pf.checks ?? {}).filter((c) => c && !c.ok && c.optional === true);
 +          if (blocking.length) toast(`自检发现 ${blocking.length} 项必需服务需要处理，已自动打开对应页面`);
@@ -50,7 +77,7 @@ index cee966c..7ad77cf 100644
        const muteLimit = async (ev) => {
          try {
            const code = ev.reason?.code || ev.event;
-@@ -2151,11 +2185,17 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
+@@ -2151,11 +2212,23 @@ F("toolsPath", "bili.mjs 路径", "留空 = 用合体插件自带的 tools/", "t
            h("div", { className: "qbw-hint", style: { marginBottom: "8px" } },
              "打开 DSH 不会自动启动任何服务；点下面按钮一次性启动：QQ（含 SnowLuma 二维码）、QQ 桥接、B站生物钟、桌宠、语音。"),
            h("div", { className: "qbw-actions" },
@@ -65,8 +92,14 @@ index cee966c..7ad77cf 100644
 +          preflight ? h("div", { style: { marginTop: "6px" } },
 +            h("div", { className: "qbw-hint" }, "启动前自检："),
 +            ...Object.entries(preflight.checks ?? {}).map(([id, c]) => h("div", { className: "qbw-kv", key: `pf-${id}` },
-+              h("span", null, `${c.ok ? "✓" : "✗"} ${c.label}`),
-+              h("span", null, `${c.detail || ""}${c.action ? `　→ ${c.action.label}` : ""}`)))) : null,
++              h("span", null, `${c.ok ? "✓" : "✗"} ${c.label}${c.optional && !c.ok ? "（可选）" : ""}`),
++              h("span", { style: { display: "flex", gap: "6px", alignItems: "center" } },
++                h("span", null, c.detail || ""),
++                c.action ? h(Btn, {
++                  kind: "qbw-btn3",
++                  disabled: preflightBusy,
++                  onClick: () => fixPreflightItem(c.action, c.action.label),
++                }, c.action.label) : null)))) : null,
            (allResult?.items ?? []).length ? h("div", { style: { marginTop: "6px" } },
              ...(allResult.items).map((it) => h("div", { className: "qbw-kv", key: `all-${it.id}` },
                h("span", null, `${it.ok ? "✓" : (it.optional ? "⚠️" : "✗")} ${it.label}`),
